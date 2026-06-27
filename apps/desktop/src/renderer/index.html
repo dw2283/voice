@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voice Flow Dashboard</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5efe5;
+        --panel: rgba(255, 251, 245, 0.92);
+        --panel-strong: #fffaf1;
+        --ink: #211814;
+        --muted: #7b6a5c;
+        --line: #dccab6;
+        --accent: #cf6a36;
+        --accent-soft: #ffe2d1;
+        --ok: #e1f3e5;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(255, 228, 205, 0.95), transparent 34%),
+          radial-gradient(circle at bottom right, rgba(246, 215, 191, 0.9), transparent 28%),
+          var(--bg);
+        color: var(--ink);
+      }
+
+      main {
+        padding: 18px;
+      }
+
+      .shell {
+        display: grid;
+        gap: 16px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        padding: 18px;
+        box-shadow: 0 20px 60px rgba(94, 61, 39, 0.08);
+        backdrop-filter: blur(10px);
+      }
+
+      .hero {
+        display: grid;
+        gap: 10px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        width: fit-content;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: #863713;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1, h2 {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 32px;
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+      }
+
+      h2 {
+        font-size: 18px;
+      }
+
+      p {
+        margin: 0;
+        line-height: 1.55;
+        color: var(--muted);
+      }
+
+      .actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 15px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .primary {
+        background: var(--accent);
+        color: white;
+        font-weight: 700;
+      }
+
+      .secondary {
+        background: white;
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .stat {
+        background: var(--panel-strong);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 14px;
+      }
+
+      .kicker {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+
+      .value {
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .card {
+        display: grid;
+        gap: 10px;
+      }
+
+      pre {
+        margin: 0;
+        min-height: 120px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 14px;
+        font-family: "SF Mono", "JetBrains Mono", monospace;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      @media (max-width: 480px) {
+        .stats {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="shell">
+        <article class="panel hero">
+          <span class="eyebrow">Voice Flow Dashboard</span>
+          <h1>Quiet by default.</h1>
+          <p>The floating pet is the main experience. This dashboard is only here when you want to inspect the latest transcript, output, or system status.</p>
+          <div class="actions">
+            <button class="primary" id="hideButton">Hide dashboard</button>
+            <button class="secondary" id="openPlaygroundButton">Open web playground</button>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="stats">
+            <div class="stat">
+              <div class="kicker">Mode</div>
+              <div class="value" id="modeValue">Idle</div>
+            </div>
+            <div class="stat">
+              <div class="kicker">Provider</div>
+              <div class="value" id="providerValue">Unknown</div>
+            </div>
+            <div class="stat">
+              <div class="kicker">Microphone</div>
+              <div class="value" id="micValue">Checking…</div>
+            </div>
+            <div class="stat">
+              <div class="kicker">Hotkey</div>
+              <div class="value" id="hotkeyValue">Loading…</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel card">
+          <h2>Session Status</h2>
+          <p id="statusText">Waiting for the pet.</p>
+        </article>
+
+        <article class="panel card">
+          <h2>Raw Transcript</h2>
+          <pre id="rawText">No transcript yet.</pre>
+        </article>
+
+        <article class="panel card">
+          <h2>Polished Output</h2>
+          <pre id="polishedText">No polished output yet.</pre>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="./renderer.mjs"></script>
+  </body>
+</html>

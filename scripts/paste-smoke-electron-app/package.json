@@ -1,0 +1,5 @@
+{
+  "name": "voice-flow-paste-smoke-electron-app",
+  "private": true,
+  "main": "main.cjs"
+}

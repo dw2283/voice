@@ -1,0 +1,13 @@
+{
+  "name": "@voice-flow/desktop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron src/main.mjs",
+    "start": "electron src/main.mjs"
+  },
+  "dependencies": {
+    "electron": "^37.1.0"
+  }
+}
+

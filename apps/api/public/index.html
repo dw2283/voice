@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voice Flow Playground</title>
+    <style>
+      :root {
+        --paper: #f7f0e8;
+        --panel: rgba(255, 250, 244, 0.9);
+        --ink: #201712;
+        --muted: #78665a;
+        --line: #dcc7b5;
+        --accent: #c45d2d;
+        --accent-deep: #8d3414;
+        --accent-soft: #ffe3d3;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(255, 233, 214, 0.92), transparent 32%),
+          radial-gradient(circle at bottom right, rgba(245, 214, 187, 0.88), transparent 28%),
+          linear-gradient(180deg, #f9f4ee 0%, var(--paper) 100%);
+      }
+
+      main {
+        width: min(1120px, calc(100vw - 32px));
+        margin: 28px auto;
+        display: grid;
+        gap: 18px;
+      }
+
+      .hero,
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        box-shadow: 0 24px 80px rgba(109, 70, 43, 0.08);
+        backdrop-filter: blur(10px);
+      }
+
+      .hero {
+        padding: 26px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        width: fit-content;
+        padding: 7px 12px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent-deep);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(34px, 5vw, 62px);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+      }
+
+      .hero p {
+        margin: 0;
+        max-width: 760px;
+        color: var(--muted);
+        font-size: 17px;
+        line-height: 1.6;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 18px;
+      }
+
+      .panel {
+        padding: 20px;
+      }
+
+      .section-title {
+        margin: 0 0 6px;
+        font-size: 22px;
+      }
+
+      .section-copy {
+        margin: 0 0 16px;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .status {
+        margin-bottom: 14px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: var(--accent-soft);
+        color: var(--accent-deep);
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 14px 18px;
+        font: inherit;
+        cursor: pointer;
+        transition: transform 140ms ease, background 140ms ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+      }
+
+      .primary {
+        background: var(--accent);
+        color: white;
+        font-weight: 700;
+      }
+
+      .primary[data-recording="true"] {
+        background: #8d3414;
+      }
+
+      .secondary {
+        background: white;
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
+
+      label {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 14px;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.02em;
+      }
+
+      textarea,
+      input,
+      select {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 14px 16px;
+        font: inherit;
+        color: var(--ink);
+        background: rgba(255, 255, 255, 0.92);
+      }
+
+      textarea {
+        min-height: 136px;
+        resize: vertical;
+        line-height: 1.55;
+      }
+
+      .two-up {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 14px;
+      }
+
+      .output {
+        min-height: 120px;
+        border-radius: 20px;
+        border: 1px solid var(--line);
+        padding: 15px;
+        background: rgba(255, 255, 255, 0.85);
+        white-space: pre-wrap;
+        line-height: 1.6;
+      }
+
+      .meta {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .two-up {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <span class="eyebrow">Voice Flow Playground</span>
+        <h1>Speak naturally. Ship polished text.</h1>
+        <p>
+          This local demo mirrors the core Wispr Flow loop: capture a short dictation, pass it through a
+          polish layer, and drop the result into the target box as if it were ready to send.
+        </p>
+      </section>
+
+      <section class="grid">
+        <article class="panel">
+          <h2 class="section-title">Dictation Session</h2>
+          <p class="section-copy">
+            Record audio for the real API path, or paste a rough transcript to exercise the polish layer with the
+            mock provider.
+          </p>
+
+          <div class="status" id="status">Ready. Choose record or debug transcript.</div>
+
+          <div class="controls">
+            <button class="primary" id="recordButton" data-recording="false">Start recording</button>
+            <button class="secondary" id="submitDebugButton">Submit debug transcript</button>
+            <button class="secondary" id="applyButton">Apply polished text to target box</button>
+          </div>
+
+          <div class="two-up">
+            <label>
+              Frontmost app
+              <select id="appName">
+                <option value="Messages">Messages</option>
+                <option value="Mail">Mail</option>
+                <option value="Slack">Slack</option>
+                <option value="Cursor">Cursor</option>
+                <option value="Notes">Notes</option>
+              </select>
+            </label>
+
+            <label>
+              User intent
+              <select id="userIntent">
+                <option value="">Auto</option>
+                <option value="message">Message</option>
+                <option value="email">Email</option>
+                <option value="notes">Notes</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            Personal dictionary hints
+            <input id="dictionaryHints" value="Wispr, Vercel, Supabase, dingwang" />
+          </label>
+
+          <label>
+            Debug transcript
+            <textarea
+              id="debugTranscript"
+            >umm hey team quick update i talked to cheyenne earlier actually cheyene and i think they can own the first part but the friday deadline might slip can you send this to everyone after lunch</textarea>
+          </label>
+
+          <label>
+            Target text box
+            <textarea id="targetBox" placeholder="The polished text will land here."></textarea>
+          </label>
+        </article>
+
+        <aside class="panel stack">
+          <div>
+            <h2 class="section-title">Model Output</h2>
+            <p class="section-copy">Compare the raw transcript with the cleaned-up result.</p>
+          </div>
+
+          <div>
+            <label>Raw transcript</label>
+            <div class="output" id="rawOutput">Nothing yet.</div>
+          </div>
+
+          <div>
+            <label>Polished output</label>
+            <div class="output" id="polishedOutput">Nothing yet.</div>
+          </div>
+
+          <div class="meta" id="meta">Waiting for a request.</div>
+        </aside>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
+

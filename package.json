@@ -1,0 +1,25 @@
+{
+  "name": "voice-flow-clone",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w @voice-flow/api",
+    "dev:desktop": "npm run dev -w @voice-flow/desktop",
+    "test": "node --test tests/*.test.mjs",
+    "voice:doctor": "node scripts/doctor.mjs",
+    "voice:focus-smoke": "node scripts/focus-smoke.mjs",
+    "voice:flow-smoke": "node scripts/flow-smoke.mjs",
+    "voice:hotkey-smoke": "node scripts/hotkey-smoke.mjs",
+    "voice:manual-check": "node scripts/manual-check.mjs",
+    "voice:paste-smoke": "node scripts/paste-smoke.mjs",
+    "voice:restart": "node scripts/start.mjs",
+    "voice:setup": "node scripts/setup.mjs",
+    "voice:smoke": "node scripts/smoke.mjs",
+    "voice:start": "node scripts/start.mjs",
+    "voice:stop": "node scripts/stop.mjs"
+  }
+}

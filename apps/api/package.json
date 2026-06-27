@@ -1,0 +1,10 @@
+{
+  "name": "@voice-flow/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node src/index.mjs",
+    "start": "node src/index.mjs"
+  }
+}
+
