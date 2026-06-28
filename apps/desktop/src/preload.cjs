@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("flow", {
   updateUiState: (patch) => ipcRenderer.invoke("flow:update-ui-state", patch),
   showDashboard: () => ipcRenderer.invoke("flow:show-dashboard"),
   hideDashboard: () => ipcRenderer.invoke("flow:hide-dashboard"),
+  toggleDictation: () => ipcRenderer.invoke("flow:toggle-dictation"),
   openExternalUrl: (url) => ipcRenderer.invoke("flow:open-external-url", url),
   processDictation: (payload) => ipcRenderer.invoke("flow:process-dictation", payload),
   onUiState: (callback) => {

@@ -174,6 +174,7 @@
           <h1>Quiet by default.</h1>
           <p>The floating pet is the main experience. This dashboard is only here when you want to inspect the latest transcript, output, or system status.</p>
           <div class="actions">
+            <button class="primary" id="toggleDictationButton">Start dictation</button>
             <button class="primary" id="hideButton">Hide dashboard</button>
             <button class="secondary" id="openPlaygroundButton">Open web playground</button>
           </div>
@@ -194,7 +195,7 @@
               <div class="value" id="micValue">Checking…</div>
             </div>
             <div class="stat">
-              <div class="kicker">Hotkey</div>
+              <div class="kicker">Trigger</div>
               <div class="value" id="hotkeyValue">Loading…</div>
             </div>
           </div>
@@ -203,6 +204,11 @@
         <article class="panel card">
           <h2>Session Status</h2>
           <p id="statusText">Waiting for the pet.</p>
+        </article>
+
+        <article class="panel card">
+          <h2>Trigger Status</h2>
+          <p id="hotkeyStatusText">Checking trigger status…</p>
         </article>
 
         <article class="panel card">

@@ -1,7 +1,11 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell, systemPreferences } from "electron";
+import { execFile, spawn } from "node:child_process";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import readline from "node:readline";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell, systemPreferences } from "electron";
 import { getActiveContext } from "./macos-context.mjs";
 import { pasteText } from "./paste-text.mjs";
 import { installRuntimeGuards } from "../../../packages/shared/src/runtime-guards.mjs";
@@ -10,9 +14,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dashboardHtmlPath = path.join(__dirname, "renderer", "index.html");
 const petHtmlPath = path.join(__dirname, "renderer", "pet.html");
+const fnKeyListenerSourcePath = path.join(__dirname, "fn-key-listener.m");
+const fnKeyListenerBinaryPath = path.resolve(__dirname, "../bin/voice-flow-fn-listener");
 const runtimeLogFilePath = path.resolve(__dirname, "../../../.cache/desktop-main.log");
 const runtimeStateFilePath = path.resolve(__dirname, "../../../.cache/desktop-runtime-state.json");
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
+const execFileAsync = promisify(execFile);
 
 installRuntimeGuards({
   logFilePath: runtimeLogFilePath
@@ -28,16 +35,26 @@ let permissionsConfigured = false;
 let isQuitting = false;
 let petHideTimer = null;
 let lastCapturedContext = null;
+let fnKeyListenerProcess = null;
+let fnKeyListenerReader = null;
 let runtimeStateWrite = Promise.resolve();
+let fnHoldPressed = false;
+let lastPetAnchor = "hidden";
 const isMac = process.platform === "darwin";
 const petWindowSize = {
-  width: 140,
-  height: 58
+  width: 154,
+  height: 64
 };
+const configuredTriggerMode = String(process.env.FLOW_TRIGGER_MODE ?? (isMac ? "fn_hold" : "hotkey"))
+  .trim()
+  .toLowerCase();
+const configuredHotkey = process.env.FLOW_HOTKEY ?? "CommandOrControl+Shift+Space";
 
 const settings = {
   apiBaseUrl: process.env.FLOW_API_BASE_URL ?? "http://127.0.0.1:8000",
-  hotkey: process.env.FLOW_HOTKEY ?? "Alt+Space",
+  hotkey: configuredHotkey,
+  triggerMode: configuredTriggerMode,
+  triggerLabel: configuredTriggerMode === "fn_hold" && isMac ? "Fn (hold)" : formatAcceleratorLabel(configuredHotkey),
   autoPaste: (process.env.FLOW_AUTO_PASTE ?? "true").toLowerCase() === "true",
   autoStopAfterSilenceMs: getNumberEnv("FLOW_AUTO_STOP_SILENCE_MS", 650, 350, 2000),
   autoStopMaxInitialSilenceMs: getNumberEnv("FLOW_AUTO_STOP_MAX_INITIAL_SILENCE_MS", 8000, 3000, 15000),
@@ -50,8 +67,12 @@ const settings = {
 
 const uiState = {
   mode: "idle",
-  status: "Press the hotkey to dictate.",
+  status: getIdleStatusText(),
   micStatus: "Microphone status is loading...",
+  hotkeyRegistered: false,
+  hotkeyStatus: `${settings.triggerLabel} is getting ready.`,
+  hotkeyTriggerCount: 0,
+  lastHotkeyTriggeredAt: "",
   rawTranscript: "No transcript yet.",
   polishedText: "No polished output yet.",
   provider: "unknown",
@@ -79,6 +100,22 @@ function toMicrophoneState(rawStatus) {
     status: "pending",
     message: "Microphone access has not been granted yet."
   };
+}
+
+function formatAcceleratorLabel(value) {
+  return value
+    .replaceAll("CommandOrControl", isMac ? "Command" : "Control")
+    .replaceAll("Meta", isMac ? "Command" : "Meta")
+    .replaceAll("Alt", isMac ? "Option" : "Alt")
+    .replaceAll("+", " + ");
+}
+
+function getIdleStatusText() {
+  if (settings.triggerMode === "fn_hold" && isMac) {
+    return "Hold fn to dictate.";
+  }
+
+  return "Press the hotkey to dictate.";
 }
 
 function getMicrophoneAccessStatus() {
@@ -146,6 +183,25 @@ function clearPetHideTimer() {
   petHideTimer = null;
 }
 
+function applyPetOverlayBehavior() {
+  if (!petWindow || petWindow.isDestroyed()) {
+    return;
+  }
+
+  petWindow.setFocusable(false);
+  petWindow.setAlwaysOnTop(true, "screen-saver", 1);
+
+  if (isMac) {
+    petWindow.setVisibleOnAllWorkspaces(true, {
+      visibleOnFullScreen: true,
+      skipTransformProcessType: true
+    });
+    return;
+  }
+
+  petWindow.setVisibleOnAllWorkspaces(true);
+}
+
 function schedulePetWindowHide(delayMs, { resetModes = [] } = {}) {
   clearPetHideTimer();
   petHideTimer = setTimeout(() => {
@@ -154,11 +210,12 @@ function schedulePetWindowHide(delayMs, { resetModes = [] } = {}) {
     }
 
     petWindow.hide();
+    lastPetAnchor = "hidden";
 
     if (resetModes.includes(uiState.mode)) {
       broadcastUiState({
         mode: "idle",
-        status: "Press the hotkey to dictate.",
+        status: getIdleStatusText(),
         isRecording: false
       });
     }
@@ -190,21 +247,54 @@ function positionPetWindowNearCursor() {
     width,
     height
   });
+  lastPetAnchor = "cursor";
 }
 
-function revealPetWindow({ nearCursor = false } = {}) {
+function positionPetWindowNearActiveWindow(windowBounds) {
+  if (!petWindow || petWindow.isDestroyed() || !windowBounds) {
+    return false;
+  }
+
+  const { width, height } = petWindowSize;
+  const anchorPoint = {
+    x: windowBounds.x + Math.round(windowBounds.width / 2),
+    y: windowBounds.y + Math.min(28, Math.max(18, Math.round(windowBounds.height * 0.08)))
+  };
+  const display = screen.getDisplayNearestPoint(anchorPoint);
+  const padding = 10;
+  const minX = display.workArea.x + padding;
+  const maxX = display.workArea.x + display.workArea.width - width - padding;
+  const minY = display.workArea.y + padding;
+  const maxY = display.workArea.y + display.workArea.height - height - padding;
+  const nextX = clamp(anchorPoint.x - Math.round(width / 2), minX, maxX);
+  const nextY = clamp(anchorPoint.y, minY, maxY);
+
+  petWindow.setBounds({
+    x: nextX,
+    y: nextY,
+    width,
+    height
+  });
+  lastPetAnchor = "active-window";
+  return true;
+}
+
+function revealPetWindow({ nearCursor = false, context = null } = {}) {
   if (!petWindow || petWindow.isDestroyed()) {
     createPetWindow();
   }
 
   clearPetHideTimer();
+  applyPetOverlayBehavior();
 
-  if (nearCursor) {
+  const positionedNearWindow = context?.windowBounds ? positionPetWindowNearActiveWindow(context.windowBounds) : false;
+
+  if (!positionedNearWindow && nearCursor) {
     positionPetWindowNearCursor();
   }
 
-  petWindow.setAlwaysOnTop(true, "screen-saver");
   petWindow.showInactive();
+  petWindow.moveTop();
 }
 
 function syncPetWindowVisibility() {
@@ -212,7 +302,7 @@ function syncPetWindowVisibility() {
     return;
   }
 
-  if (uiState.mode === "listening" || uiState.mode === "processing") {
+  if (uiState.mode === "arming" || uiState.mode === "listening" || uiState.mode === "processing") {
     revealPetWindow();
     return;
   }
@@ -255,11 +345,20 @@ function buildRuntimeStateSnapshot() {
     capturedAppName: lastCapturedContext?.appName ?? "",
     dashboardVisible: uiState.dashboardVisible,
     hotkey: settings.hotkey,
+    hotkeyRegistered: uiState.hotkeyRegistered,
+    hotkeyStatus: uiState.hotkeyStatus,
+    hotkeyTriggerCount: uiState.hotkeyTriggerCount,
     isRecording: uiState.isRecording,
+    lastHotkeyTriggeredAt: uiState.lastHotkeyTriggeredAt,
+    petAnchor: lastPetAnchor,
+    petVisible: Boolean(petWindow && !petWindow.isDestroyed() && petWindow.isVisible()),
+    petBounds: petWindow && !petWindow.isDestroyed() ? petWindow.getBounds() : null,
     micStatus: uiState.micStatus,
     mode: uiState.mode,
     provider: uiState.provider,
     status: uiState.status,
+    triggerLabel: settings.triggerLabel,
+    triggerMode: settings.triggerMode,
     updatedAt: uiState.updatedAt
   };
 }
@@ -285,7 +384,8 @@ async function safeGetActiveContext() {
       dictionaryHints: [],
       platform: process.platform,
       selectedText: "",
-      surroundingText: ""
+      surroundingText: "",
+      windowBounds: null
     };
   }
 }
@@ -345,7 +445,7 @@ function createPetWindow() {
   });
 
   configurePermissions(petWindow.webContents.session);
-  petWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  applyPetOverlayBehavior();
   petWindow.loadFile(petHtmlPath);
   petWindow.on("closed", () => {
     petWindow = null;
@@ -410,6 +510,25 @@ function hideDashboard() {
   broadcastUiState({ dashboardVisible: false });
 }
 
+async function toggleDictationFromDashboard() {
+  if (uiState.mode === "processing") {
+    return false;
+  }
+
+  if (uiState.isRecording) {
+    sendDictationAction({
+      action: "stop",
+      source: "dashboard"
+    });
+    return true;
+  }
+
+  return triggerDictationStart({
+    holdToTalk: false,
+    source: "dashboard"
+  });
+}
+
 async function callDictationApi(payload) {
   const response = await fetch(`${settings.apiBaseUrl}/v1/dictate`, {
     method: "POST",
@@ -436,32 +555,280 @@ async function callDictationApi(payload) {
   return json.result;
 }
 
-function registerHotkey() {
-  globalShortcut.register(settings.hotkey, () => {
-    void (async () => {
-      if (uiState.mode === "processing") {
-        return;
-      }
+function sendDictationAction(payload) {
+  petWindow?.webContents.send("flow:hotkey-toggle", payload);
+}
 
-      if (uiState.isRecording) {
-        petWindow?.webContents.send("flow:hotkey-toggle", {
-          action: "stop"
-        });
-        return;
-      }
+function recordTriggerActivity(statusText) {
+  const triggeredAt = new Date().toISOString();
+  const nextTriggerCount = (uiState.hotkeyTriggerCount || 0) + 1;
 
-      lastCapturedContext = await safeGetActiveContext();
-      revealPetWindow({ nearCursor: true });
-      petWindow?.webContents.send("flow:hotkey-toggle", {
-        action: "start"
-      });
-    })();
+  broadcastUiState({
+    hotkeyRegistered: true,
+    hotkeyStatus: statusText,
+    hotkeyTriggerCount: nextTriggerCount,
+    lastHotkeyTriggeredAt: triggeredAt
   });
+
+  return triggeredAt;
+}
+
+async function triggerDictationStart({ holdToTalk = false, source = "hotkey" } = {}) {
+  if (uiState.mode === "processing") {
+    return false;
+  }
+
+  broadcastUiState({
+    mode: "arming",
+    status: holdToTalk
+      ? "Getting the microphone ready..."
+      : "Waking up Voice Flow...",
+    isRecording: false
+  });
+
+  lastCapturedContext = await safeGetActiveContext();
+  applyPetOverlayBehavior();
+  revealPetWindow({
+    context: lastCapturedContext,
+    nearCursor: true
+  });
+  sendDictationAction({
+    action: "start",
+    holdToTalk,
+    source
+  });
+  return true;
+}
+
+function triggerDictationStop({ source = "hotkey" } = {}) {
+  sendDictationAction({
+    action: "stop",
+    source
+  });
+}
+
+async function ensureFnKeyListenerBinary() {
+  await fs.mkdir(path.dirname(fnKeyListenerBinaryPath), { recursive: true });
+
+  const sourceExists = fsSync.existsSync(fnKeyListenerSourcePath);
+
+  if (!sourceExists) {
+    throw new Error(`Fn key listener source is missing: ${fnKeyListenerSourcePath}`);
+  }
+
+  const sourceStat = await fs.stat(fnKeyListenerSourcePath);
+  const binaryStat = await fs.stat(fnKeyListenerBinaryPath).catch(() => null);
+  const shouldCompile = !binaryStat || sourceStat.mtimeMs > binaryStat.mtimeMs;
+
+  if (!shouldCompile) {
+    return;
+  }
+
+  await execFileAsync(
+    "clang",
+    [
+      fnKeyListenerSourcePath,
+      "-fobjc-arc",
+      "-framework",
+      "Cocoa",
+      "-framework",
+      "ApplicationServices",
+      "-o",
+      fnKeyListenerBinaryPath
+    ],
+    {
+      timeout: 30000
+    }
+  );
+}
+
+function handleFnKeyListenerMessage(rawLine) {
+  let payload;
+
+  try {
+    payload = JSON.parse(rawLine);
+  } catch {
+    console.warn(`Voice Flow fn listener emitted invalid JSON: ${rawLine}`);
+    return;
+  }
+
+  if (payload.event === "status") {
+    const trusted = Boolean(payload.accessibilityTrusted);
+    const message =
+      payload.message ||
+      (trusted
+        ? "Fn hold listener is active."
+        : "Fn hold listener needs Accessibility permission in System Settings > Privacy & Security > Accessibility.");
+
+    broadcastUiState({
+      hotkeyRegistered: trusted,
+      hotkeyStatus: message
+    });
+    return;
+  }
+
+  if (payload.event !== "fn") {
+    return;
+  }
+
+  if (payload.phase === "down") {
+    if (fnHoldPressed) {
+      return;
+    }
+
+    fnHoldPressed = true;
+    const triggeredAt = recordTriggerActivity("Fn hold listener is active.");
+    console.log(`Voice Flow fn trigger down at ${triggeredAt}`);
+    void triggerDictationStart({
+      holdToTalk: true,
+      source: "fn_hold"
+    });
+    return;
+  }
+
+  if (payload.phase === "up") {
+    if (!fnHoldPressed) {
+      return;
+    }
+
+    fnHoldPressed = false;
+    console.log("Voice Flow fn trigger released");
+
+    if (uiState.isRecording) {
+      triggerDictationStop({
+        source: "fn_hold"
+      });
+    }
+  }
+}
+
+async function startFnKeyListener() {
+  if (!isMac || settings.triggerMode !== "fn_hold" || fnKeyListenerProcess) {
+    return;
+  }
+
+  try {
+    await ensureFnKeyListenerBinary();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Fn key listener compilation failed.";
+
+    console.error(`Voice Flow failed to prepare fn hold listener: ${message}`);
+    broadcastUiState({
+      hotkeyRegistered: false,
+      hotkeyStatus: `Fn hold listener setup failed: ${message}`
+    });
+    return;
+  }
+
+  const child = spawn(fnKeyListenerBinaryPath, [], {
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  fnKeyListenerProcess = child;
+  fnKeyListenerReader = readline.createInterface({
+    input: child.stdout
+  });
+
+  fnKeyListenerReader.on("line", (line) => {
+    handleFnKeyListenerMessage(line);
+  });
+
+  child.stderr.on("data", (chunk) => {
+    console.warn(`Voice Flow fn listener stderr: ${chunk.toString().trim()}`);
+  });
+
+  child.on("exit", (code, signal) => {
+    fnKeyListenerReader?.close();
+    fnKeyListenerReader = null;
+    fnKeyListenerProcess = null;
+    fnHoldPressed = false;
+
+    if (isQuitting) {
+      return;
+    }
+
+    const detail = `Fn hold listener exited unexpectedly (code ${code ?? "null"}, signal ${signal ?? "none"}).`;
+    console.error(detail);
+    broadcastUiState({
+      hotkeyRegistered: false,
+      hotkeyStatus: detail
+    });
+  });
+}
+
+function stopFnKeyListener() {
+  if (!fnKeyListenerProcess) {
+    return;
+  }
+
+  fnKeyListenerProcess.kill("SIGTERM");
+  fnKeyListenerProcess = null;
+  fnHoldPressed = false;
+}
+
+function registerHotkey() {
+  if (settings.triggerMode === "fn_hold" && isMac) {
+    return;
+  }
+
+  let registered = false;
+
+  try {
+    registered = globalShortcut.register(settings.hotkey, () => {
+      const triggeredAt = recordTriggerActivity(`Hotkey is active. Last trigger: ${new Date().toISOString()}`);
+
+      console.log(`Voice Flow hotkey triggered (${settings.hotkey}) at ${triggeredAt}`);
+
+      void (async () => {
+        if (uiState.mode === "processing") {
+          return;
+        }
+
+        if (uiState.isRecording) {
+          triggerDictationStop({
+            source: "hotkey"
+          });
+          return;
+        }
+
+        await triggerDictationStart({
+          holdToTalk: false,
+          source: "hotkey"
+        });
+      })();
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown hotkey registration error.";
+
+    console.error(`Voice Flow failed to register hotkey ${settings.hotkey}: ${message}`);
+    broadcastUiState({
+      hotkeyRegistered: false,
+      hotkeyStatus: `Hotkey registration failed: ${message}`
+    });
+    return;
+  }
+
+  const isRegistered = registered && globalShortcut.isRegistered(settings.hotkey);
+
+  broadcastUiState({
+    hotkeyRegistered: isRegistered,
+    hotkeyStatus: isRegistered
+      ? `Hotkey is active: ${formatAcceleratorLabel(settings.hotkey)}`
+      : `Hotkey could not be registered. macOS may already be using ${formatAcceleratorLabel(settings.hotkey)}.`
+  });
+
+  if (isRegistered) {
+    console.log(`Voice Flow registered hotkey ${settings.hotkey}`);
+    return;
+  }
+
+  console.warn(`Voice Flow could not register hotkey ${settings.hotkey}`);
 }
 
 app.whenReady().then(() => {
   createPetWindow();
   createDashboardWindow();
+  void startFnKeyListener();
   registerHotkey();
   broadcastUiState({
     micStatus: getMicrophoneAccessStatus().message
@@ -478,11 +845,16 @@ app.whenReady().then(() => {
 });
 
 app.on("second-instance", () => {
-  revealPetWindow({ nearCursor: true });
+  applyPetOverlayBehavior();
+  revealPetWindow({
+    context: lastCapturedContext,
+    nearCursor: true
+  });
 });
 
 app.on("will-quit", () => {
   isQuitting = true;
+  stopFnKeyListener();
   globalShortcut.unregisterAll();
 });
 
@@ -502,6 +874,9 @@ ipcMain.handle("flow:show-dashboard", async () => {
 ipcMain.handle("flow:hide-dashboard", async () => {
   hideDashboard();
   return true;
+});
+ipcMain.handle("flow:toggle-dictation", async () => {
+  return toggleDictationFromDashboard();
 });
 ipcMain.handle("flow:open-external-url", async (_event, url) => {
   await shell.openExternal(url);

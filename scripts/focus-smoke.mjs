@@ -2,12 +2,29 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { cacheDir, ensureRuntimeDirs, repoRoot, sleep } from "./process-utils.mjs";
+import {
+  buildAppleScriptHotkeyLines,
+  buildVoiceEnv,
+  cacheDir,
+  ensureRuntimeDirs,
+  getTriggerLabel,
+  getTriggerMode,
+  readEnvFile,
+  repoRoot,
+  sleep
+} from "./process-utils.mjs";
 
 const execFileAsync = promisify(execFile);
 const resultPath = path.join(cacheDir, "focus-smoke-result.json");
 const runtimeStatePath = path.join(cacheDir, "desktop-runtime-state.json");
 const preflightOnly = process.argv.includes("--preflight-only");
+const voiceEnv = buildVoiceEnv(await readEnvFile());
+const triggerMode = getTriggerMode(voiceEnv);
+const hotkey = voiceEnv.FLOW_HOTKEY;
+const triggerLabel = getTriggerLabel({
+  hotkey,
+  triggerMode
+});
 
 let documentOpen = false;
 let resultWritten = false;
@@ -65,11 +82,7 @@ async function closeTextEditDocument() {
 }
 
 async function pressHotkey() {
-  await runAppleScript([
-    'tell application "System Events"',
-    "key code 49 using option down",
-    "end tell"
-  ]);
+  await runAppleScript(buildAppleScriptHotkeyLines(hotkey));
 }
 
 async function readRuntimeState() {
@@ -134,6 +147,10 @@ async function writeResult(result) {
 }
 
 async function stopIfStillRecording() {
+  if (triggerMode === "fn_hold") {
+    return;
+  }
+
   const state = await readRuntimeState();
 
   if (state?.isRecording || state?.mode === "listening") {
@@ -144,7 +161,7 @@ async function stopIfStillRecording() {
 
 async function main() {
   if (process.platform !== "darwin") {
-    throw new Error("Focus smoke test is macOS-only because it uses TextEdit, System Events, and the global hotkey.");
+    throw new Error("Focus smoke test is macOS-only because it uses TextEdit, System Events, and the desktop trigger.");
   }
 
   console.log("Checking Voice Flow health before focus smoke...");
@@ -161,12 +178,18 @@ async function main() {
     return;
   }
 
+  if (triggerMode === "fn_hold") {
+    throw new Error(
+      "Focus smoke only supports `FLOW_TRIGGER_MODE=hotkey`. The current trigger is `Fn (hold)`, so use `npm run voice:manual-check` for the real verification flow."
+    );
+  }
+
   await prepareTextEditDocument();
 
   const beforeHotkeyApp = await getFrontmostApp();
   console.log("Focus smoke test");
-  console.log(`Frontmost before hotkey: ${beforeHotkeyApp}`);
-  console.log("Pressing the real global hotkey and checking that TextEdit keeps focus.");
+  console.log(`Frontmost before trigger: ${beforeHotkeyApp}`);
+  console.log(`Pressing the configured trigger (${triggerLabel}) and checking that TextEdit keeps focus.`);
   console.log("");
 
   await pressHotkey();
@@ -188,8 +211,8 @@ async function main() {
     });
     throw new Error(
       [
-        "Focus smoke could not observe Lupi listening after an AppleScript-generated Option+Space.",
-        "macOS or Electron may ignore synthetic global-hotkey events.",
+        `Focus smoke could not observe Voice Flow listening after an AppleScript-generated ${triggerLabel}.`,
+        "macOS or Electron may ignore synthetic trigger events.",
         "Use `npm run voice:manual-check` with a physical keypress for authoritative evidence.",
         error instanceof Error ? error.message : String(error)
       ].join(" ")
@@ -228,8 +251,8 @@ async function main() {
   });
 
   console.log("PASS Focus smoke test");
-  console.log("PASS Target app before hotkey: TextEdit");
-  console.log("PASS Target app after hotkey: TextEdit");
+  console.log("PASS Target app before trigger: TextEdit");
+  console.log("PASS Target app after trigger: TextEdit");
   console.log(`PASS Captured app: ${recordingState.capturedAppName || "unknown"}`);
   console.log(`PASS Result: ${resultPath}`);
 }

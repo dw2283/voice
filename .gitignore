@@ -2,6 +2,7 @@ node_modules
 .venv
 .cache
 .agent
+apps/desktop/bin/voice-flow-fn-listener
 __pycache__
 .DS_Store
 .env

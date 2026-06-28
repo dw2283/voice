@@ -9,6 +9,8 @@ export const repoRoot = path.resolve(new URL("..", import.meta.url).pathname);
 export const cacheDir = path.join(repoRoot, ".cache");
 export const logsDir = path.join(cacheDir, "logs");
 export const pidDir = path.join(cacheDir, "pids");
+export const defaultHotkey = "CommandOrControl+Shift+Space";
+export const defaultTriggerMode = process.platform === "darwin" ? "fn_hold" : "hotkey";
 
 export async function ensureRuntimeDirs() {
   await fs.mkdir(logsDir, { recursive: true });
@@ -65,11 +67,13 @@ export function buildVoiceEnv(extraEnv = {}) {
     FLOW_AUTO_PASTE: "true",
     FLOW_AUTO_STOP_MAX_INITIAL_SILENCE_MS: "8000",
     FLOW_AUTO_STOP_SILENCE_MS: "650",
-    FLOW_HOTKEY: "Alt+Space",
+    FLOW_HOTKEY: defaultHotkey,
+    FLOW_TRIGGER_MODE: defaultTriggerMode,
     FLOW_LOCAL_TRANSCRIBE_COMPUTE_TYPE: "int8",
     FLOW_LOCAL_TRANSCRIBE_MODEL: "base",
     FLOW_MIN_RECORDING_MS: "700",
     FLOW_OPENAI_BASE_URL: "https://api.openai.com/v1",
+    FLOW_POLISH_ENABLED: "true",
     FLOW_POLISH_MODEL: "gpt-4.1-mini",
     FLOW_PREFER_BROWSER_SPEECH_RECOGNITION: "false",
     FLOW_TRANSCRIBE_PROVIDER: "openai"
@@ -80,6 +84,91 @@ export function buildVoiceEnv(extraEnv = {}) {
     ...extraEnv,
     ...process.env
   };
+}
+
+export function isPolishEnabled(env = process.env) {
+  const raw = env.FLOW_POLISH_ENABLED;
+
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return true;
+  }
+
+  return !["0", "false", "no", "off"].includes(String(raw).trim().toLowerCase());
+}
+
+export function formatHotkeyForDisplay(value, platform = process.platform) {
+  return value
+    .replaceAll("CommandOrControl", platform === "darwin" ? "Command" : "Control")
+    .replaceAll("Meta", platform === "darwin" ? "Command" : "Meta")
+    .replaceAll("Alt", platform === "darwin" ? "Option" : "Alt")
+    .replaceAll("+", " + ");
+}
+
+export function getTriggerMode(env = process.env, platform = process.platform) {
+  const raw = env.FLOW_TRIGGER_MODE ?? (platform === "darwin" ? "fn_hold" : "hotkey");
+  return String(raw).trim().toLowerCase() || (platform === "darwin" ? "fn_hold" : "hotkey");
+}
+
+export function getTriggerLabel({
+  hotkey = defaultHotkey,
+  platform = process.platform,
+  triggerMode = getTriggerMode({ FLOW_TRIGGER_MODE: defaultTriggerMode }, platform)
+} = {}) {
+  if (platform === "darwin" && triggerMode === "fn_hold") {
+    return "Fn (hold)";
+  }
+
+  return formatHotkeyForDisplay(hotkey, platform);
+}
+
+export function buildAppleScriptHotkeyLines(accelerator) {
+  const parts = accelerator.split("+").map((part) => part.trim()).filter(Boolean);
+  const key = parts.pop();
+  const modifiers = [];
+
+  for (const part of parts) {
+    if (part === "CommandOrControl" || part === "Command" || part === "Meta") {
+      modifiers.push("command down");
+      continue;
+    }
+
+    if (part === "Alt" || part === "Option") {
+      modifiers.push("option down");
+      continue;
+    }
+
+    if (part === "Shift") {
+      modifiers.push("shift down");
+      continue;
+    }
+
+    if (part === "Control") {
+      modifiers.push("control down");
+      continue;
+    }
+
+    throw new Error(`Unsupported hotkey modifier for AppleScript: ${part}`);
+  }
+
+  let keyCommand = "";
+
+  if (key === "Space") {
+    keyCommand = "key code 49";
+  } else if (key && /^[A-Za-z0-9]$/.test(key)) {
+    keyCommand = `keystroke "${key.toLowerCase()}"`;
+  } else {
+    throw new Error(`Unsupported hotkey key for AppleScript: ${key}`);
+  }
+
+  if (modifiers.length > 0) {
+    keyCommand += ` using {${modifiers.join(", ")}}`;
+  }
+
+  return [
+    'tell application "System Events"',
+    keyCommand,
+    "end tell"
+  ];
 }
 
 export async function listProcesses() {
@@ -113,6 +202,7 @@ export function isVoiceProcess(processInfo) {
   return (
     command.includes("apps/api/src/index.mjs") ||
     command.includes("apps/desktop/src/main.mjs") ||
+    command.includes("apps/desktop/bin/voice-flow-fn-listener") ||
     command.includes("node_modules/.bin/electron src/main.mjs") ||
     command.includes("node_modules/electron/dist/Electron.app/Contents/MacOS/Electron src/main.mjs") ||
     command.includes("local-whisper-worker.py")

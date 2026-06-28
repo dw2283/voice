@@ -67,8 +67,9 @@ function updateOutputs(result) {
   rawOutputEl.textContent = result.rawTranscript || "No transcript returned.";
   polishedOutputEl.textContent = result.polishedText || "No polished text returned.";
   latestPolishedText = result.polishedText || "";
+  const polishModel = result.modelInfo?.polish === "disabled" ? "disabled" : result.modelInfo?.polish ?? "unknown";
   setMeta(
-    `Provider: ${result.provider}. Transcribe model: ${result.modelInfo?.transcribe ?? "unknown"}. Polish model: ${result.modelInfo?.polish ?? "unknown"}.`
+    `Provider: ${result.provider}. Transcribe model: ${result.modelInfo?.transcribe ?? "unknown"}. Polish model: ${polishModel}.`
   );
 }
 
@@ -152,7 +153,7 @@ async function startRawAudioRecording(stream = null) {
   mediaRecorder.start(250);
   setRecordingState(true);
   setStatus("Recording audio for backend transcription. Stop when you finish speaking.");
-  setMeta("Transcription: raw audio to local/server model. Polish: server-side model.");
+  setMeta("Transcription: raw audio to local/server model. Polish: optional server-side cleanup.");
 }
 
 async function startRecording() {
@@ -212,7 +213,7 @@ async function stopRecording() {
 }
 
 async function submitDebugTranscript() {
-  setStatus("Sending rough transcript through the polish layer...");
+  setStatus("Sending rough transcript through the dictation pipeline...");
 
   const result = await callDictationApi({
     debugTranscript: debugTranscriptEl.value,
@@ -222,12 +223,12 @@ async function submitDebugTranscript() {
   });
 
   updateOutputs(result);
-  setStatus("Finished. The polished text is ready to apply.");
+  setStatus("Finished. The output text is ready to apply.");
 }
 
 function applyPolishedText() {
   if (!latestPolishedText) {
-    setStatus("No polished text yet. Record or submit a debug transcript first.");
+    setStatus("No output text yet. Record or submit a debug transcript first.");
     return;
   }
 
@@ -265,7 +266,7 @@ setMeta("Mock provider is the default until we wire a real transcription backend
 
 try {
   const health = await loadHealth();
-  setMeta(`API provider: ${health.provider}. Record to transcribe locally when supported, then polish on the server.`);
+  setMeta(`API provider: ${health.provider}. Record to transcribe locally when supported, then optionally polish on the server.`);
 } catch (error) {
   setMeta(error instanceof Error ? error.message : "Unable to load API health.");
 }

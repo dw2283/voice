@@ -2,13 +2,30 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { cacheDir, ensureRuntimeDirs, repoRoot, sleep } from "./process-utils.mjs";
+import {
+  buildAppleScriptHotkeyLines,
+  buildVoiceEnv,
+  cacheDir,
+  ensureRuntimeDirs,
+  getTriggerLabel,
+  getTriggerMode,
+  readEnvFile,
+  repoRoot,
+  sleep
+} from "./process-utils.mjs";
 
 const execFileAsync = promisify(execFile);
 const expectedPhrase = "voice flow hotkey smoke";
 const preflightOnly = process.argv.includes("--preflight-only");
 const resultPath = path.join(cacheDir, "hotkey-smoke-result.json");
 const timeoutMs = 25000;
+const voiceEnv = buildVoiceEnv(await readEnvFile());
+const triggerMode = getTriggerMode(voiceEnv);
+const hotkey = voiceEnv.FLOW_HOTKEY;
+const triggerLabel = getTriggerLabel({
+  hotkey,
+  triggerMode
+});
 
 let documentOpen = false;
 let resultWritten = false;
@@ -66,11 +83,7 @@ async function closeTextEditDocument() {
 }
 
 async function pressHotkey() {
-  await runAppleScript([
-    'tell application "System Events"',
-    "key code 49 using option down",
-    "end tell"
-  ]);
+  await runAppleScript(buildAppleScriptHotkeyLines(hotkey));
 }
 
 async function runPreflight() {
@@ -134,7 +147,7 @@ async function waitForText() {
 
 async function main() {
   if (process.platform !== "darwin") {
-    throw new Error("Hotkey smoke test is macOS-only because it uses TextEdit, System Events, and the global hotkey.");
+    throw new Error("Trigger smoke test is macOS-only because it uses TextEdit, System Events, and the desktop trigger.");
   }
 
   if (!(await commandExists("osascript"))) {
@@ -155,11 +168,17 @@ async function main() {
     return;
   }
 
+  if (triggerMode === "fn_hold") {
+    throw new Error(
+      "Automated trigger smoke only supports `FLOW_TRIGGER_MODE=hotkey`. The current trigger is `Fn (hold)`, so use `npm run voice:manual-check` for the real verification flow."
+    );
+  }
+
   await prepareTextEditDocument();
 
-  console.log("Hotkey Voice Flow smoke test");
+  console.log("Trigger Voice Flow smoke test");
   console.log(`Speaking through macOS say: "${expectedPhrase}"`);
-  console.log("This uses the real global hotkey. Keep speakers and microphone usable.");
+  console.log(`This uses the configured trigger (${triggerLabel}). Keep speakers and microphone usable.`);
   console.log("");
 
   await pressHotkey();

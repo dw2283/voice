@@ -1,4 +1,8 @@
-import { buildPolishInstructions, extractResponseText } from "../../../../packages/shared/src/prompting.mjs";
+import {
+  buildPolishInstructions,
+  buildPolishRewriteInput,
+  extractResponseText
+} from "../../../../packages/shared/src/prompting.mjs";
 import { transcribeWithLocalWhisper, warmLocalWhisper } from "./local-whisper.mjs";
 
 function requireEnv(name) {
@@ -13,6 +17,16 @@ function requireEnv(name) {
 
 function getBaseUrl() {
   return (process.env.FLOW_OPENAI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/+$/, "");
+}
+
+function isPolishEnabled() {
+  const raw = process.env.FLOW_POLISH_ENABLED;
+
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return true;
+  }
+
+  return !["0", "false", "no", "off"].includes(String(raw).trim().toLowerCase());
 }
 
 function base64ToFile(audioBase64, mimeType) {
@@ -58,6 +72,10 @@ async function getTranscriptFromAvailableSource({ apiKey, request, transcribeMod
   }
 
   if (transcribeModel) {
+    if (!apiKey) {
+      throw new Error("Missing required environment variable: OPENAI_API_KEY");
+    }
+
     try {
       const rawTranscript = await transcribeAudio({
         apiKey,
@@ -119,7 +137,7 @@ async function polishTranscript({ apiKey, model, rawTranscript, request }) {
           content: [
             {
               type: "input_text",
-              text: rawTranscript
+              text: buildPolishRewriteInput(rawTranscript)
             }
           ]
         }
@@ -146,15 +164,31 @@ export function createOpenAIProvider() {
       }
     },
     async transcribeAndPolish(request) {
-      const apiKey = requireEnv("OPENAI_API_KEY");
-      const polishModel = requireEnv("FLOW_POLISH_MODEL");
       const transcribeModel = process.env.FLOW_TRANSCRIBE_MODEL?.trim() || null;
+      const polishEnabled = isPolishEnabled();
+      const needsOpenAIKey = Boolean(transcribeModel) || polishEnabled;
+      const apiKey = needsOpenAIKey ? requireEnv("OPENAI_API_KEY") : null;
       const transcriptResult = await getTranscriptFromAvailableSource({
         apiKey,
         request,
         transcribeModel
       });
       const rawTranscript = transcriptResult.rawTranscript;
+
+      if (!polishEnabled) {
+        return {
+          provider: "openai",
+          rawTranscript,
+          polishedText: rawTranscript,
+          contextUsed: request.context,
+          modelInfo: {
+            transcribe: transcriptResult.modelInfo,
+            polish: "disabled"
+          }
+        };
+      }
+
+      const polishModel = requireEnv("FLOW_POLISH_MODEL");
 
       const polishedText = await polishTranscript({
         apiKey,

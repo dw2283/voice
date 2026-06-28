@@ -4,7 +4,16 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { promisify } from "node:util";
-import { cacheDir, ensureRuntimeDirs, repoRoot, sleep } from "./process-utils.mjs";
+import {
+  buildVoiceEnv,
+  cacheDir,
+  ensureRuntimeDirs,
+  getTriggerLabel,
+  getTriggerMode,
+  readEnvFile,
+  repoRoot,
+  sleep
+} from "./process-utils.mjs";
 
 const execFileAsync = promisify(execFile);
 const expectedPhrase = "voice flow manual check";
@@ -12,6 +21,12 @@ const preflightOnly = process.argv.includes("--preflight-only");
 const waitForEnter = process.argv.includes("--wait-for-enter");
 const resultPath = path.join(cacheDir, "manual-check-result.json");
 const timeoutMs = 90000;
+const voiceEnv = buildVoiceEnv(await readEnvFile());
+const triggerMode = getTriggerMode(voiceEnv);
+const hotkeyLabel = getTriggerLabel({
+  hotkey: voiceEnv.FLOW_HOTKEY,
+  triggerMode
+});
 
 let documentOpen = false;
 let resultWritten = false;
@@ -134,7 +149,7 @@ async function writeResult(result) {
 
 async function main() {
   if (process.platform !== "darwin") {
-    throw new Error("Manual full-loop check is macOS-only because it uses TextEdit and the global hotkey.");
+    throw new Error("Manual full-loop check is macOS-only because it uses TextEdit and the desktop trigger flow.");
   }
 
   if (!(await commandExists("osascript"))) {
@@ -160,9 +175,13 @@ async function main() {
   console.log("Manual Voice Flow full-loop check");
   console.log("");
   console.log("1. Keep the new blank TextEdit document focused.");
-  console.log("2. Press Option+Space once to start Voice Flow.");
+  if (triggerMode === "fn_hold") {
+    console.log(`2. Hold ${hotkeyLabel} while you speak, then release it to stop.`);
+  } else {
+    console.log(`2. Press ${hotkeyLabel} once to start Voice Flow.`);
+  }
   console.log(`3. Say: \"${expectedPhrase}\"`);
-  console.log("4. Pause briefly; Voice Flow should stop and paste automatically.");
+  console.log(triggerMode === "fn_hold" ? "4. Release fn; Voice Flow should stop and paste automatically." : "4. Pause briefly; Voice Flow should stop and paste automatically.");
   if (waitForEnter) {
     console.log("5. Return here and press Enter.");
   } else {

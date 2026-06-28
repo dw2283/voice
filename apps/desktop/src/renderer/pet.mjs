@@ -21,10 +21,13 @@ const speechLevelThreshold = 0.075;
 let autoStopAfterSilenceMs = 650;
 let autoStopMaxInitialSilenceMs = 8000;
 let minimumAutoStopRecordingMs = 700;
+let startRecordingPromise = null;
 let settings = {
   autoStopAfterSilenceMs,
   autoStopMaxInitialSilenceMs,
-  hotkey: "Alt+Space",
+  hotkey: "CommandOrControl+Shift+Space",
+  triggerLabel: "Fn (hold)",
+  triggerMode: "fn_hold",
   minimumAutoStopRecordingMs,
   preferBrowserSpeechRecognition: false,
   transcribeModel: "",
@@ -32,7 +35,7 @@ let settings = {
 };
 let uiState = {
   mode: "idle",
-  status: "Press the hotkey to dictate.",
+  status: "Hold fn to dictate.",
   micStatus: "Microphone status is loading...",
   rawTranscript: "No transcript yet.",
   polishedText: "No polished output yet.",
@@ -40,6 +43,8 @@ let uiState = {
   isRecording: false,
   dashboardVisible: false
 };
+let holdToTalkSession = false;
+let stopAfterPendingStart = false;
 
 function prettyHotkey(value) {
   return value
@@ -76,8 +81,15 @@ function getModeCopy(state) {
 
   if (state.mode === "listening") {
     return {
-      detail: transcriptPreview || "Speak. I’ll paste when you pause.",
+      detail: transcriptPreview || compactText(state.status, 34) || "Speak. I’ll paste when you pause.",
       title: "Listening"
+    };
+  }
+
+  if (state.mode === "arming") {
+    return {
+      detail: compactText(state.status, 34) || "Getting the microphone ready...",
+      title: "Starting"
     };
   }
 
@@ -103,7 +115,7 @@ function getModeCopy(state) {
   }
 
   return {
-    detail: `Hotkey: ${prettyHotkey(settings.hotkey)}`,
+    detail: compactText(state.status, 34) || `Trigger: ${settings.triggerLabel || prettyHotkey(settings.hotkey)}`,
     title: "Voice"
   };
 }
@@ -243,8 +255,14 @@ function updateVoiceMeter() {
   const recordingDuration = now - recordingStartedAt;
   const silenceAfterSpeech = detectedSpeech && now - lastSpeechAt >= autoStopAfterSilenceMs;
   const initialSilenceExpired = !detectedSpeech && recordingDuration >= autoStopMaxInitialSilenceMs;
+  const allowAutoStop = !holdToTalkSession;
 
-  if (!autoStopInFlight && recordingDuration >= minimumAutoStopRecordingMs && (silenceAfterSpeech || initialSilenceExpired)) {
+  if (
+    allowAutoStop &&
+    !autoStopInFlight &&
+    recordingDuration >= minimumAutoStopRecordingMs &&
+    (silenceAfterSpeech || initialSilenceExpired)
+  ) {
     autoStopInFlight = true;
     void stopRecording({
       reason: silenceAfterSpeech ? "silence" : "initial-silence"
@@ -278,45 +296,77 @@ function blobToBase64(blob) {
   });
 }
 
-async function startRecording() {
-  const access = await flowApi.ensureMicrophoneAccess();
-
-  if (access.status !== "granted") {
-    throw new Error(access.message || "Microphone access is required.");
+async function startRecording({ holdToTalk = false } = {}) {
+  if (startRecordingPromise) {
+    return startRecordingPromise;
   }
 
-  if (!window.MediaRecorder) {
-    throw new Error("MediaRecorder is unavailable in this Electron build.");
-  }
+  startRecordingPromise = (async () => {
+    try {
+      const access = await flowApi.ensureMicrophoneAccess();
 
-  await publishState({
-    micStatus: access.message
-  });
+      if (access.status !== "granted") {
+        throw new Error(access.message || "Microphone access is required.");
+      }
 
-  const stream = await ensureMediaStream();
-  chunks = [];
-  const mimeType = getPreferredRecordingMimeType();
-  mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      if (!window.MediaRecorder) {
+        throw new Error("MediaRecorder is unavailable in this Electron build.");
+      }
 
-  mediaRecorder.ondataavailable = (event) => {
-    if (event.data.size > 0) {
-      chunks.push(event.data);
+      await publishState({
+        micStatus: access.message
+      });
+
+      const stream = await ensureMediaStream();
+      chunks = [];
+      const mimeType = getPreferredRecordingMimeType();
+      mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      mediaRecorder.start(250);
+      isRecording = true;
+      holdToTalkSession = holdToTalk;
+      autoStopInFlight = false;
+      detectedSpeech = false;
+      lastSpeechAt = 0;
+      recordingStartedAt = Date.now();
+      await startVoiceMeter(stream);
+      await publishState({
+        mode: "listening",
+        status: holdToTalk
+          ? "Voice is listening. Release fn and I’ll paste what you said."
+          : "Voice is listening. Pause briefly and I’ll paste automatically.",
+        rawTranscript: "Listening...",
+        isRecording: true
+      });
+
+      if (holdToTalk && stopAfterPendingStart && isRecording) {
+        stopAfterPendingStart = false;
+        await stopRecording();
+      }
+    } catch (error) {
+      isRecording = false;
+      holdToTalkSession = false;
+      autoStopInFlight = false;
+      stopAfterPendingStart = false;
+      stopVoiceMeter();
+      mediaRecorder = null;
+      chunks = [];
+      recordingStartedAt = 0;
+      throw error;
     }
-  };
+  })();
 
-  mediaRecorder.start(250);
-  isRecording = true;
-  autoStopInFlight = false;
-  detectedSpeech = false;
-  lastSpeechAt = 0;
-  recordingStartedAt = Date.now();
-  await startVoiceMeter(stream);
-  await publishState({
-    mode: "listening",
-    status: "Voice is listening. Pause briefly and I’ll paste automatically.",
-    rawTranscript: "Listening...",
-    isRecording: true
-  });
+  try {
+    await startRecordingPromise;
+  } finally {
+    startRecordingPromise = null;
+  }
 }
 
 async function stopRecording({ reason = "manual" } = {}) {
@@ -341,11 +391,19 @@ async function stopRecording({ reason = "manual" } = {}) {
 
   try {
     if (reason === "initial-silence") {
-      throw new Error("I didn’t hear anything. Press the hotkey and start speaking.");
+      throw new Error(
+        settings.triggerMode === "fn_hold"
+          ? "I didn’t hear anything. Hold fn and start speaking right away."
+          : "I didn’t hear anything. Press the trigger and start speaking."
+      );
     }
 
     if (Date.now() - recordingStartedAt < 450 || blob.size === 0) {
-      throw new Error("I did not catch enough audio. Speak, then pause briefly.");
+      throw new Error(
+        settings.triggerMode === "fn_hold"
+          ? "I did not catch enough audio. Hold fn a bit longer and speak clearly."
+          : "I did not catch enough audio. Speak, then pause briefly."
+      );
     }
 
     const audioBase64 = await blobToBase64(blob);
@@ -357,6 +415,7 @@ async function stopRecording({ reason = "manual" } = {}) {
       finalOnly: true
     });
   } finally {
+    holdToTalkSession = false;
     autoStopInFlight = false;
     mediaRecorder = null;
     chunks = [];
@@ -371,6 +430,11 @@ async function toggleRecording() {
       return;
     }
 
+    if (startRecordingPromise) {
+      stopAfterPendingStart = true;
+      return;
+    }
+
     await startRecording();
   } catch (error) {
     await publishRecordingError(error);
@@ -382,8 +446,14 @@ async function handleHotkeyAction(payload = {}) {
     const action = payload.action ?? "toggle";
 
     if (action === "start") {
+      if (payload.holdToTalk) {
+        stopAfterPendingStart = false;
+      }
+
       if (!isRecording) {
-        await startRecording();
+        await startRecording({
+          holdToTalk: Boolean(payload.holdToTalk)
+        });
       }
       return;
     }
@@ -391,6 +461,11 @@ async function handleHotkeyAction(payload = {}) {
     if (action === "stop") {
       if (isRecording) {
         await stopRecording();
+        return;
+      }
+
+      if (startRecordingPromise) {
+        stopAfterPendingStart = true;
       }
       return;
     }
@@ -438,6 +513,14 @@ async function init() {
   );
   minimumAutoStopRecordingMs = getNumberSetting(settings.minimumAutoStopRecordingMs, minimumAutoStopRecordingMs, 250, 2000);
   uiState = await flowApi.getUiState();
+
+  if (uiState.mode === "idle" && !uiState.status) {
+    uiState.status =
+      settings.triggerMode === "fn_hold"
+        ? "Hold fn to dictate."
+        : `Press ${settings.triggerLabel || prettyHotkey(settings.hotkey)} to dictate.`;
+  }
+
   setVisualState(uiState);
 }
 

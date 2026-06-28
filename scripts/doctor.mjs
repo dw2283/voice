@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import {
   buildVoiceEnv,
+  isPolishEnabled,
   listProcesses,
   logsDir,
   readEnvFile,
@@ -52,10 +53,22 @@ async function checkFileSystem() {
 async function checkEnv() {
   const envFile = await readEnvFile();
   const env = buildVoiceEnv(envFile);
-  const required = ["OPENAI_API_KEY", "FLOW_OPENAI_BASE_URL", "FLOW_POLISH_MODEL", "FLOW_TRANSCRIBE_PROVIDER"];
+  const provider = (env.FLOW_TRANSCRIBE_PROVIDER ?? "").trim().toLowerCase();
+  const polishEnabled = isPolishEnabled(env);
+  const transcribeModel = env.FLOW_TRANSCRIBE_MODEL?.trim() || "";
+  const needsOpenAIConfig = provider === "openai" && (polishEnabled || Boolean(transcribeModel));
 
-  for (const key of required) {
-    addCheck(env[key] ? "pass" : "fail", `${key} configured`, env[key] ? "set" : "missing");
+  addCheck(env.FLOW_TRANSCRIBE_PROVIDER ? "pass" : "fail", "FLOW_TRANSCRIBE_PROVIDER configured", env.FLOW_TRANSCRIBE_PROVIDER ? "set" : "missing");
+  addCheck("pass", "Polish pass", `FLOW_POLISH_ENABLED=${env.FLOW_POLISH_ENABLED}`);
+
+  if (needsOpenAIConfig) {
+    for (const key of ["OPENAI_API_KEY", "FLOW_OPENAI_BASE_URL"]) {
+      addCheck(env[key] ? "pass" : "fail", `${key} configured`, env[key] ? "set" : "missing");
+    }
+  }
+
+  if (provider === "openai" && polishEnabled) {
+    addCheck(env.FLOW_POLISH_MODEL ? "pass" : "fail", "FLOW_POLISH_MODEL configured", env.FLOW_POLISH_MODEL ? "set" : "missing");
   }
 
   addCheck(
