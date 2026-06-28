@@ -7,6 +7,7 @@ import {
   isPolishEnabled,
   listProcesses,
   logsDir,
+  needsLocalWhisper,
   readEnvFile,
   repoRoot
 } from "./process-utils.mjs";
@@ -40,26 +41,42 @@ async function readLogTail(filePath) {
   }
 }
 
-async function checkFileSystem() {
+async function checkFileSystem(env) {
   const electronBin = path.join(repoRoot, "node_modules", ".bin", "electron");
   const pythonBin = path.join(repoRoot, ".venv", "bin", "python");
   const modelCache = path.join(repoRoot, ".cache", "faster-whisper");
+  const fnListenerBin = path.join(repoRoot, "apps", "desktop", "build", "bin", "voice-flow-fn-listener");
+  const requiresLocalWhisper = needsLocalWhisper(env);
 
   addCheck((await pathExists(electronBin)) ? "pass" : "fail", "Electron installed", electronBin);
-  addCheck((await pathExists(pythonBin)) ? "pass" : "fail", "Python venv exists", pythonBin);
-  addCheck((await pathExists(modelCache)) ? "pass" : "warn", "Local model cache exists", modelCache);
+  addCheck((await pathExists(fnListenerBin)) ? "pass" : "warn", "Fn listener binary exists", fnListenerBin);
+  addCheck(
+    (await pathExists(pythonBin)) ? "pass" : requiresLocalWhisper ? "fail" : "warn",
+    "Python venv exists",
+    requiresLocalWhisper ? pythonBin : "optional when FLOW_TRANSCRIBE_MODEL is set"
+  );
+  addCheck(
+    (await pathExists(modelCache)) ? "pass" : requiresLocalWhisper ? "warn" : "warn",
+    "Local model cache exists",
+    modelCache
+  );
 }
 
-async function checkEnv() {
-  const envFile = await readEnvFile();
-  const env = buildVoiceEnv(envFile);
+function checkEnv(env) {
   const provider = (env.FLOW_TRANSCRIBE_PROVIDER ?? "").trim().toLowerCase();
   const polishEnabled = isPolishEnabled(env);
   const transcribeModel = env.FLOW_TRANSCRIBE_MODEL?.trim() || "";
   const needsOpenAIConfig = provider === "openai" && (polishEnabled || Boolean(transcribeModel));
 
   addCheck(env.FLOW_TRANSCRIBE_PROVIDER ? "pass" : "fail", "FLOW_TRANSCRIBE_PROVIDER configured", env.FLOW_TRANSCRIBE_PROVIDER ? "set" : "missing");
+  addCheck(env.FLOW_API_HOST ? "pass" : "fail", "FLOW_API_HOST configured", env.FLOW_API_HOST ? "set" : "missing");
   addCheck("pass", "Polish pass", `FLOW_POLISH_ENABLED=${env.FLOW_POLISH_ENABLED}`);
+  addCheck(env.FLOW_API_TOKEN ? "pass" : "warn", "Desktop API token seed", env.FLOW_API_TOKEN ? "set" : "blank");
+  addCheck(
+    env.FLOW_API_TOKENS ? "pass" : "warn",
+    "Hosted API token auth",
+    env.FLOW_API_TOKENS ? "enabled" : "disabled"
+  );
 
   if (needsOpenAIConfig) {
     for (const key of ["OPENAI_API_KEY", "FLOW_OPENAI_BASE_URL"]) {
@@ -78,7 +95,12 @@ async function checkEnv() {
   );
 }
 
-async function checkPythonWhisper() {
+async function checkPythonWhisper(env) {
+  if (!needsLocalWhisper(env)) {
+    addCheck("pass", "faster-whisper import", "Skipped because cloud transcription is configured.");
+    return;
+  }
+
   const pythonBin = path.join(repoRoot, ".venv", "bin", "python");
 
   if (!(await pathExists(pythonBin))) {
@@ -122,9 +144,9 @@ async function checkProcesses() {
   addCheck(whisperWorker.length <= 1 ? "pass" : "warn", "Whisper worker count", `count=${whisperWorker.length}`);
 }
 
-async function checkApiHealth() {
+async function checkApiHealth(apiBaseUrl) {
   try {
-    const response = await fetch("http://127.0.0.1:8000/health");
+    const response = await fetch(`${String(apiBaseUrl).replace(/\/+$/, "")}/health`);
     const body = await response.json();
     addCheck(response.ok && body.ok ? "pass" : "fail", "API health", JSON.stringify(body));
   } catch (error) {
@@ -156,10 +178,13 @@ function printResults() {
   }
 }
 
-await checkFileSystem();
-await checkEnv();
-await checkPythonWhisper();
+const envFile = await readEnvFile();
+const env = buildVoiceEnv(envFile);
+
+await checkFileSystem(env);
+checkEnv(env);
+await checkPythonWhisper(env);
 await checkProcesses();
-await checkApiHealth();
+await checkApiHealth(env.FLOW_API_BASE_URL);
 await checkLogs();
 printResults();

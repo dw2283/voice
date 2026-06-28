@@ -4,6 +4,7 @@ const rawOutputEl = document.getElementById("rawOutput");
 const polishedOutputEl = document.getElementById("polishedOutput");
 const debugTranscriptEl = document.getElementById("debugTranscript");
 const appNameEl = document.getElementById("appName");
+const apiTokenEl = document.getElementById("apiToken");
 const userIntentEl = document.getElementById("userIntent");
 const dictionaryHintsEl = document.getElementById("dictionaryHints");
 const recordButton = document.getElementById("recordButton");
@@ -16,6 +17,8 @@ let mediaStream = null;
 let chunks = [];
 let isRecording = false;
 let latestPolishedText = "";
+
+apiTokenEl.value = localStorage.getItem("voice-flow-playground-token") ?? "";
 
 function setStatus(message) {
   statusEl.textContent = message;
@@ -74,9 +77,11 @@ function updateOutputs(result) {
 }
 
 async function callDictationApi(payload) {
+  const apiToken = apiTokenEl.value.trim();
   const response = await fetch("/v1/dictate", {
     method: "POST",
     headers: {
+      ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
       "Content-Type": "application/json"
     },
     body: JSON.stringify(payload)
@@ -250,6 +255,10 @@ recordButton.addEventListener("click", async () => {
   }
 });
 
+apiTokenEl.addEventListener("input", () => {
+  localStorage.setItem("voice-flow-playground-token", apiTokenEl.value.trim());
+});
+
 submitDebugButton.addEventListener("click", async () => {
   try {
     await submitDebugTranscript();
@@ -262,7 +271,7 @@ applyButton.addEventListener("click", () => {
   applyPolishedText();
 });
 
-setMeta("Mock provider is the default until we wire a real transcription backend.");
+setMeta("Record audio or send a rough transcript. If polish is disabled on the API, the polished output will match the raw transcript.");
 
 try {
   const health = await loadHealth();

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { ensureRuntimeDirs, repoRoot } from "./process-utils.mjs";
+import { buildVoiceEnv, ensureRuntimeDirs, needsLocalWhisper, readEnvFile, repoRoot } from "./process-utils.mjs";
 
 const execFileAsync = promisify(execFile);
 const shouldInstall = process.argv.includes("--install");
@@ -60,6 +60,20 @@ async function ensureNodeDeps() {
 
   await run("npm", ["install"]);
   record("pass", "Node dependencies installed", "npm install completed");
+}
+
+async function ensureFnListenerBinary() {
+  if (process.platform !== "darwin") {
+    record("warn", "Fn listener build skipped", "This helper is only required on macOS.");
+    return;
+  }
+
+  try {
+    await run("node", ["scripts/build-fn-listener.mjs"]);
+    record("pass", "Fn listener built", "apps/desktop/build/bin/voice-flow-fn-listener");
+  } catch (error) {
+    record("fail", "Fn listener build failed", error.message);
+  }
 }
 
 async function ensurePythonVenv() {
@@ -123,6 +137,16 @@ function printSummary() {
 await ensureRuntimeDirs();
 await ensureEnvFile();
 await ensureNodeDeps();
-await ensurePythonVenv();
-await ensureFasterWhisper();
+await ensureFnListenerBinary();
+
+const envFile = await readEnvFile();
+const env = buildVoiceEnv(envFile);
+
+if (needsLocalWhisper(env)) {
+  await ensurePythonVenv();
+  await ensureFasterWhisper();
+} else {
+  record("pass", "Local Whisper optional", "FLOW_TRANSCRIBE_MODEL is set, so Python and faster-whisper are not required.");
+}
+
 printSummary();

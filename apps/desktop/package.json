@@ -1,13 +1,15 @@
 {
   "name": "@voice-flow/desktop",
   "private": true,
+  "version": "0.1.0-beta.1",
   "type": "module",
+  "main": "src/main.mjs",
   "scripts": {
-    "dev": "electron src/main.mjs",
-    "start": "electron src/main.mjs"
+    "dev": "node ../../scripts/build-fn-listener.mjs && electron src/main.mjs",
+    "start": "node ../../scripts/build-fn-listener.mjs && electron src/main.mjs"
   },
   "dependencies": {
-    "electron": "^37.1.0"
+    "electron": "^37.1.0",
+    "electron-updater": "^6.6.2"
   }
 }
-

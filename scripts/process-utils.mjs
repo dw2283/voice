@@ -63,7 +63,10 @@ export async function readEnvFile(filePath = path.join(repoRoot, ".env")) {
 export function buildVoiceEnv(extraEnv = {}) {
   const defaults = {
     FLOW_API_BASE_URL: "http://127.0.0.1:8000",
+    FLOW_API_HOST: "127.0.0.1",
     FLOW_API_PORT: "8000",
+    FLOW_API_TOKEN: "local-dev-token",
+    FLOW_API_TOKENS: "local-dev-token",
     FLOW_AUTO_PASTE: "true",
     FLOW_AUTO_STOP_MAX_INITIAL_SILENCE_MS: "8000",
     FLOW_AUTO_STOP_SILENCE_MS: "650",
@@ -76,6 +79,7 @@ export function buildVoiceEnv(extraEnv = {}) {
     FLOW_POLISH_ENABLED: "true",
     FLOW_POLISH_MODEL: "gpt-4.1-mini",
     FLOW_PREFER_BROWSER_SPEECH_RECOGNITION: "false",
+    FLOW_TRANSCRIBE_MODEL: "gpt-4o-mini-transcribe",
     FLOW_TRANSCRIBE_PROVIDER: "openai"
   };
 
@@ -84,6 +88,13 @@ export function buildVoiceEnv(extraEnv = {}) {
     ...extraEnv,
     ...process.env
   };
+}
+
+export function needsLocalWhisper(env = process.env) {
+  const provider = String(env.FLOW_TRANSCRIBE_PROVIDER ?? "mock").trim().toLowerCase();
+  const transcribeModel = String(env.FLOW_TRANSCRIBE_MODEL ?? "").trim();
+
+  return provider === "openai" && !transcribeModel;
 }
 
 export function isPolishEnabled(env = process.env) {
@@ -202,6 +213,7 @@ export function isVoiceProcess(processInfo) {
   return (
     command.includes("apps/api/src/index.mjs") ||
     command.includes("apps/desktop/src/main.mjs") ||
+    command.includes("apps/desktop/build/bin/voice-flow-fn-listener") ||
     command.includes("apps/desktop/bin/voice-flow-fn-listener") ||
     command.includes("node_modules/.bin/electron src/main.mjs") ||
     command.includes("node_modules/electron/dist/Electron.app/Contents/MacOS/Electron src/main.mjs") ||

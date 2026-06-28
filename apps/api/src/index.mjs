@@ -3,11 +3,13 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createProvider } from "./providers/index.mjs";
+import { isApiAuthEnabled, isAuthorizedBearerToken } from "./auth.mjs";
 import { createHttpError, invalidJsonBodyError, toErrorResponse, wrapDictationRequestError } from "./http-errors.mjs";
 import { assertDictationRequest } from "../../../packages/shared/src/contracts.mjs";
 import { installRuntimeGuards } from "../../../packages/shared/src/runtime-guards.mjs";
 
-const port = Number(process.env.FLOW_API_PORT ?? 8000);
+const host = process.env.FLOW_API_HOST ?? "127.0.0.1";
+const port = Number(process.env.FLOW_API_PORT ?? process.env.PORT ?? 8000);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, "../public");
@@ -29,7 +31,7 @@ if (typeof provider.warmup === "function") {
 function writeJson(response, statusCode, payload) {
   const headers = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
   };
 
@@ -137,6 +139,13 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === "POST" && url.pathname === "/v1/dictate") {
+      if (isApiAuthEnabled() && !isAuthorizedBearerToken(request.headers.authorization)) {
+        writeJson(response, 401, {
+          error: "Missing or invalid Voice Flow API token."
+        });
+        return;
+      }
+
       const body = await readJsonBody(request);
       let dictationRequest;
 
@@ -164,6 +173,6 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, "127.0.0.1", () => {
-  console.log(`Voice Flow API listening on http://127.0.0.1:${port}`);
+server.listen(port, host, () => {
+  console.log(`Voice Flow API listening on http://${host}:${port}`);
 });

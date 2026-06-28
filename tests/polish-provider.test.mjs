@@ -123,3 +123,38 @@ test("openai provider sends rewrite-only polish instructions", async () => {
   assert.match(seenCalls[0].input[1].content[0].text, /transcript to rewrite:/i);
   assert.match(seenCalls[0].input[1].content[0].text, /what's the weather tomorrow/i);
 });
+
+test("openai provider does not fall back to local whisper when cloud transcription is configured", async () => {
+  const originalFetch = global.fetch;
+
+  global.fetch = async (url) => {
+    if (String(url).includes("/audio/transcriptions")) {
+      throw new Error("simulated network failure");
+    }
+
+    throw new Error("unexpected fetch call");
+  };
+
+  try {
+    await withTemporaryEnv(
+      {
+        FLOW_POLISH_ENABLED: "false",
+        FLOW_POLISH_MODEL: undefined,
+        FLOW_TRANSCRIBE_MODEL: "gpt-4o-mini-transcribe",
+        OPENAI_API_KEY: "test-key"
+      },
+      async () => {
+        const provider = createOpenAIProvider();
+        const request = buildRequest("");
+        request.audioBase64 = Buffer.from("dummy-audio").toString("base64");
+
+        await assert.rejects(
+          provider.transcribeAndPolish(request),
+          /simulated network failure/
+        );
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

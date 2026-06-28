@@ -1,14 +1,19 @@
 {
   "name": "voice-flow-clone",
+  "description": "Mac-first Voice Flow clone with Electron desktop capture and a dictation API.",
   "private": true,
+  "author": "dw2283",
   "type": "module",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
+    "build:fn-listener": "node scripts/build-fn-listener.mjs",
     "dev:api": "npm run dev -w @voice-flow/api",
     "dev:desktop": "npm run dev -w @voice-flow/desktop",
+    "release:mac": "npm run build:fn-listener && electron-builder --config apps/desktop/electron-builder.mjs --mac --universal",
+    "release:mac:dir": "npm run build:fn-listener && electron-builder --config apps/desktop/electron-builder.mjs --dir --mac --universal",
     "test": "node --test tests/*.test.mjs",
     "voice:doctor": "node scripts/doctor.mjs",
     "voice:focus-smoke": "node scripts/focus-smoke.mjs",
@@ -21,5 +26,12 @@
     "voice:smoke": "node scripts/smoke.mjs",
     "voice:start": "node scripts/start.mjs",
     "voice:stop": "node scripts/stop.mjs"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "@electron/notarize": "^3.1.0",
+    "electron-builder": "^25.1.8"
   }
 }

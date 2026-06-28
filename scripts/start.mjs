@@ -1,7 +1,8 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import {
   buildVoiceEnv,
   cacheDir,
@@ -15,6 +16,8 @@ import {
   repoRoot,
   sleep
 } from "./process-utils.mjs";
+
+const execFileAsync = promisify(execFile);
 
 async function createLogFd(fileName) {
   await ensureRuntimeDirs();
@@ -75,6 +78,14 @@ const electronBin = path.join(repoRoot, "node_modules", ".bin", "electron");
 
 await ensureRuntimeDirs();
 await fsPromises.mkdir(cacheDir, { recursive: true });
+
+if (process.platform === "darwin") {
+  await execFileAsync(process.execPath, ["scripts/build-fn-listener.mjs"], {
+    cwd: repoRoot,
+    env,
+    maxBuffer: 1024 * 1024 * 8
+  });
+}
 
 const stoppedCount = await stopExistingVoiceProcesses();
 const apiPid = await spawnDetached("api", process.execPath, ["apps/api/src/index.mjs"], {

@@ -76,26 +76,21 @@ async function getTranscriptFromAvailableSource({ apiKey, request, transcribeMod
       throw new Error("Missing required environment variable: OPENAI_API_KEY");
     }
 
-    try {
-      const rawTranscript = await transcribeAudio({
-        apiKey,
-        model: transcribeModel,
-        audioBase64: request.audioBase64,
-        mimeType: request.mimeType
-      });
+    const rawTranscript = await transcribeAudio({
+      apiKey,
+      model: transcribeModel,
+      audioBase64: request.audioBase64,
+      mimeType: request.mimeType
+    });
 
-      if (rawTranscript.trim()) {
-        return {
-          modelInfo: transcribeModel,
-          rawTranscript
-        };
-      }
-    } catch (error) {
-      console.warn(
-        `Remote transcription failed for ${transcribeModel}. Falling back to local speech transcription.`,
-        error instanceof Error ? error.message : error
-      );
+    if (!rawTranscript.trim()) {
+      throw new Error("No speech was detected in that audio clip. Try speaking a bit louder or recording for longer.");
     }
+
+    return {
+      modelInfo: transcribeModel,
+      rawTranscript
+    };
   }
 
   const localResult = await transcribeWithLocalWhisper({

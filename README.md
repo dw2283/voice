@@ -4,9 +4,10 @@ Mac-first clone of the core Wispr Flow experience:
 
 - `fn` hold-to-talk trigger plus an on-screen fallback
 - short dictation session
-- local speech transcription with optional model polish
+- cloud speech transcription with optional AI polish
 - optional AI polish pass
 - paste output text back into the active app
+- packaged Mac beta release pipeline with signing, notarization, and auto-update hooks
 
 The main experience is a tiny AI voice overlay. Hold `fn`, speak, then release it, and the output text is pasted back into the app you were using. The overlay is an audio-reactive orb rather than a cartoon pet, so it behaves more like a focused voice input tool.
 
@@ -17,24 +18,28 @@ npm run voice:setup
 npm run voice:restart
 ```
 
-`voice:setup` verifies local dependencies and creates `.env` from `.env.example` if it is missing. On a fresh machine, run `npm run voice:setup -- --install` to install Node and Python dependencies.
+`voice:setup` verifies local dependencies, builds the native `fn` listener helper, and creates `.env` from `.env.example` if it is missing. On a fresh machine, run `npm run voice:setup -- --install` to install Node dependencies. Python is only required when you intentionally clear `FLOW_TRANSCRIBE_MODEL` and fall back to local Whisper.
 
 `voice:restart` stops stale Voice Flow API, Electron, and local transcription worker processes, then starts one clean backend and one clean desktop app. Logs go to `.cache/logs`.
 
 Use `fn` on macOS as the default trigger: hold it to dictate, then release it to stop and paste. If `fn` is unavailable on the current keyboard, you can still fall back to the dashboard trigger button or switch to `FLOW_TRIGGER_MODE=hotkey` and set `FLOW_HOTKEY`. Right-click the tiny overlay to open the dashboard.
 
-The default auto-stop timing is tuned for speed: `FLOW_AUTO_STOP_SILENCE_MS=650`, `FLOW_MIN_RECORDING_MS=700`, and `FLOW_AUTO_STOP_MAX_INITIAL_SILENCE_MS=8000`. The API also prewarms the local Whisper worker on startup so the first real dictation after `voice:restart` does not pay the full model-load cost.
+The default auto-stop timing is tuned for speed: `FLOW_AUTO_STOP_SILENCE_MS=650`, `FLOW_MIN_RECORDING_MS=700`, and `FLOW_AUTO_STOP_MAX_INITIAL_SILENCE_MS=8000`.
 
 ## Runtime Setup
 
-The local `.env` file is gitignored and stores the OpenAI-compatible endpoint, model names, trigger mode, fallback hotkey, polish toggle, and API key. The current configured flow is:
+The local `.env` file is gitignored and stores the OpenAI-compatible endpoint, model names, bearer tokens, trigger mode, fallback hotkey, polish toggle, and OpenAI key. The current default flow is:
 
 - desktop capture: Electron + native microphone permission
-- transcription: local `faster-whisper` model, default `base`
+- transcription: OpenAI-compatible model, default `gpt-4o-mini-transcribe`
 - polish: OpenAI-compatible `gpt-4.1-mini` when `FLOW_POLISH_ENABLED=true`
 - paste-back: macOS clipboard + Command-V into the previously active app
+- desktop auth: first-run API base URL + Voice Flow service token, stored in the app's local config and macOS secure storage
+- API auth: `/v1/dictate` requires `Authorization: Bearer ...` when `FLOW_API_TOKENS` is configured
 
 Set `FLOW_POLISH_ENABLED=false` to skip the AI polish pass entirely. In that mode, the API still transcribes audio, returns `polishedText` equal to `rawTranscript`, and reports `modelInfo.polish` as `disabled`.
+
+If you want local Whisper instead of cloud transcription, clear `FLOW_TRANSCRIBE_MODEL` and keep the local Whisper settings. `voice:setup` and `voice:doctor` will then expect the workspace `.venv` and `faster-whisper`.
 
 ## Commands
 
@@ -55,6 +60,9 @@ Set `FLOW_POLISH_ENABLED=false` to skip the AI polish pass entirely. In that mod
 - `npm run voice:restart`: clean restart the full app.
 - `npm run dev:api`: run only the API in the foreground.
 - `npm run dev:desktop`: run only Electron in the foreground.
+- `npm run build:fn-listener`: compile the universal macOS helper used for `fn` hold detection.
+- `npm run release:mac`: build the signed/notarized Mac beta payloads when release secrets are configured.
+- `npm run release:mac:dir`: build an unpacked Mac app directory for local packaging verification.
 
 `voice:manual-check` writes its latest result to `.cache/manual-check-result.json` so the final human check can be recorded without relying on chat history.
 `voice:focus-smoke` writes its latest result to `.cache/focus-smoke-result.json`; it only automates the fallback hotkey path, so `fn` mode still needs `voice:manual-check`.
@@ -70,7 +78,8 @@ Set `FLOW_POLISH_ENABLED=false` to skip the AI polish pass entirely. In that mod
 
 ## Current state
 
-- `apps/api` serves the playground on `http://127.0.0.1:8000/`.
+- `apps/api` serves the playground and health check on `http://127.0.0.1:8000/` by default, or any host you set with `FLOW_API_HOST`.
 - `apps/desktop` defaults to a hidden AI voice overlay and wakes near the active window, falling back to the mouse cursor when needed.
 - Browser `SpeechRecognition` is disabled for the desktop path; audio goes through the backend.
-- The local transcription model is cached under `.cache/faster-whisper`.
+- Desktop builds resolve the `fn` listener from a bundled binary instead of compiling Objective-C at runtime.
+- `render.yaml` defines a reference Render deployment for the API, and `.github/workflows/release.yml` defines the Mac beta release pipeline.

@@ -1,11 +1,21 @@
-import { execFile, spawn } from "node:child_process";
-import fsSync from "node:fs";
+import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
-import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell, systemPreferences } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  globalShortcut,
+  ipcMain,
+  safeStorage,
+  screen,
+  shell,
+  systemPreferences
+} from "electron";
+import { autoUpdater } from "electron-updater";
+import { createDesktopConfigStore } from "./config-store.mjs";
 import { getActiveContext } from "./macos-context.mjs";
 import { pasteText } from "./paste-text.mjs";
 import { installRuntimeGuards } from "../../../packages/shared/src/runtime-guards.mjs";
@@ -14,12 +24,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dashboardHtmlPath = path.join(__dirname, "renderer", "index.html");
 const petHtmlPath = path.join(__dirname, "renderer", "pet.html");
-const fnKeyListenerSourcePath = path.join(__dirname, "fn-key-listener.m");
-const fnKeyListenerBinaryPath = path.resolve(__dirname, "../bin/voice-flow-fn-listener");
-const runtimeLogFilePath = path.resolve(__dirname, "../../../.cache/desktop-main.log");
-const runtimeStateFilePath = path.resolve(__dirname, "../../../.cache/desktop-runtime-state.json");
+const userDataPath = app.getPath("userData");
+const runtimeLogFilePath = path.join(userDataPath, "logs", "desktop-main.log");
+const runtimeStateFilePath = path.join(userDataPath, "desktop-runtime-state.json");
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
-const execFileAsync = promisify(execFile);
+const isMac = process.platform === "darwin";
+
+app.setName("Voice Flow");
 
 installRuntimeGuards({
   logFilePath: runtimeLogFilePath
@@ -27,6 +38,14 @@ installRuntimeGuards({
 
 if (!hasSingleInstanceLock) {
   app.exit(0);
+}
+
+function getFnKeyListenerBinaryPath() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "bin", "voice-flow-fn-listener");
+  }
+
+  return path.resolve(__dirname, "../build/bin/voice-flow-fn-listener");
 }
 
 let petWindow = null;
@@ -40,7 +59,6 @@ let fnKeyListenerReader = null;
 let runtimeStateWrite = Promise.resolve();
 let fnHoldPressed = false;
 let lastPetAnchor = "hidden";
-const isMac = process.platform === "darwin";
 const petWindowSize = {
   width: 154,
   height: 64
@@ -49,28 +67,35 @@ const configuredTriggerMode = String(process.env.FLOW_TRIGGER_MODE ?? (isMac ? "
   .trim()
   .toLowerCase();
 const configuredHotkey = process.env.FLOW_HOTKEY ?? "CommandOrControl+Shift+Space";
-
-const settings = {
-  apiBaseUrl: process.env.FLOW_API_BASE_URL ?? "http://127.0.0.1:8000",
-  hotkey: configuredHotkey,
-  triggerMode: configuredTriggerMode,
-  triggerLabel: configuredTriggerMode === "fn_hold" && isMac ? "Fn (hold)" : formatAcceleratorLabel(configuredHotkey),
+const baseSettings = {
   autoPaste: (process.env.FLOW_AUTO_PASTE ?? "true").toLowerCase() === "true",
   autoStopAfterSilenceMs: getNumberEnv("FLOW_AUTO_STOP_SILENCE_MS", 650, 350, 2000),
   autoStopMaxInitialSilenceMs: getNumberEnv("FLOW_AUTO_STOP_MAX_INITIAL_SILENCE_MS", 8000, 3000, 15000),
+  hotkey: configuredHotkey,
   minimumAutoStopRecordingMs: getNumberEnv("FLOW_MIN_RECORDING_MS", 700, 250, 2000),
   preferBrowserSpeechRecognition:
     (process.env.FLOW_PREFER_BROWSER_SPEECH_RECOGNITION ?? "false").toLowerCase() === "true",
   transcribeModel: process.env.FLOW_TRANSCRIBE_MODEL ?? "",
-  transcribeProvider: process.env.FLOW_TRANSCRIBE_PROVIDER ?? "mock"
+  transcribeProvider: process.env.FLOW_TRANSCRIBE_PROVIDER ?? "mock",
+  triggerLabel: configuredTriggerMode === "fn_hold" && isMac ? "Fn (hold)" : formatAcceleratorLabel(configuredHotkey),
+  triggerMode: configuredTriggerMode
 };
-
+const desktopConfigStore = createDesktopConfigStore({
+  app,
+  safeStorage
+});
+const updateState = {
+  message: app.isPackaged ? "Voice Flow will check for beta updates after launch." : "Auto-update is only active in packaged beta builds.",
+  progress: 0,
+  status: app.isPackaged ? "idle" : "disabled",
+  version: ""
+};
 const uiState = {
   mode: "idle",
-  status: getIdleStatusText(),
+  status: "Loading Voice Flow...",
   micStatus: "Microphone status is loading...",
   hotkeyRegistered: false,
-  hotkeyStatus: `${settings.triggerLabel} is getting ready.`,
+  hotkeyStatus: `${baseSettings.triggerLabel} is getting ready.`,
   hotkeyTriggerCount: 0,
   lastHotkeyTriggeredAt: "",
   rawTranscript: "No transcript yet.",
@@ -81,27 +106,6 @@ const uiState = {
   updatedAt: Date.now()
 };
 
-function toMicrophoneState(rawStatus) {
-  if (rawStatus === "granted") {
-    return {
-      status: "granted",
-      message: "Microphone access granted."
-    };
-  }
-
-  if (rawStatus === "denied" || rawStatus === "restricted") {
-    return {
-      status: "denied",
-      message: "Microphone access is denied. Enable it in System Settings > Privacy & Security > Microphone."
-    };
-  }
-
-  return {
-    status: "pending",
-    message: "Microphone access has not been granted yet."
-  };
-}
-
 function formatAcceleratorLabel(value) {
   return value
     .replaceAll("CommandOrControl", isMac ? "Command" : "Control")
@@ -110,20 +114,89 @@ function formatAcceleratorLabel(value) {
     .replaceAll("+", " + ");
 }
 
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getNumberEnv(name, fallback, min, max) {
+  const parsed = Number(process.env[name] ?? fallback);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return clamp(parsed, min, max);
+}
+
+function getSettingsSnapshot() {
+  return {
+    ...baseSettings,
+    ...desktopConfigStore.getSnapshot(),
+    canCheckForUpdates: app.isPackaged,
+    isPackaged: app.isPackaged,
+    updateMessage: updateState.message,
+    updateProgress: updateState.progress,
+    updateStatus: updateState.status,
+    updateVersion: updateState.version
+  };
+}
+
+function broadcastSettings() {
+  const snapshot = getSettingsSnapshot();
+
+  for (const window of [petWindow, dashboardWindow]) {
+    if (!window || window.isDestroyed()) {
+      continue;
+    }
+
+    window.webContents.send("flow:settings", snapshot);
+  }
+}
+
+function setUpdateState(patch) {
+  Object.assign(updateState, patch);
+  broadcastSettings();
+}
+
 function getIdleStatusText() {
-  if (settings.triggerMode === "fn_hold" && isMac) {
+  if (!desktopConfigStore.isConfigured()) {
+    return "Open the dashboard and connect your API before dictating.";
+  }
+
+  if (baseSettings.triggerMode === "fn_hold" && isMac) {
     return "Hold fn to dictate.";
   }
 
   return "Press the hotkey to dictate.";
 }
 
+function toMicrophoneState(rawStatus) {
+  if (rawStatus === "granted") {
+    return {
+      message: "Microphone access granted.",
+      status: "granted"
+    };
+  }
+
+  if (rawStatus === "denied" || rawStatus === "restricted") {
+    return {
+      message: "Microphone access is denied. Enable it in System Settings > Privacy & Security > Microphone.",
+      status: "denied"
+    };
+  }
+
+  return {
+    message: "Microphone access has not been granted yet.",
+    status: "pending"
+  };
+}
+
 function getMicrophoneAccessStatus() {
   if (!isMac) {
     return {
-      status: "unknown",
+      message: "Desktop microphone status is only implemented for macOS right now.",
       rawStatus: "unsupported",
-      message: "Desktop microphone status is only implemented for macOS right now."
+      status: "unknown"
     };
   }
 
@@ -158,20 +231,6 @@ async function ensureMicrophoneAccess() {
 
 function isMediaPermission(permission) {
   return permission === "media" || permission === "microphone" || permission === "audioCapture";
-}
-
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function getNumberEnv(name, fallback, min, max) {
-  const parsed = Number(process.env[name] ?? fallback);
-
-  if (!Number.isFinite(parsed)) {
-    return fallback;
-  }
-
-  return clamp(parsed, min, max);
 }
 
 function clearPetHideTimer() {
@@ -214,9 +273,9 @@ function schedulePetWindowHide(delayMs, { resetModes = [] } = {}) {
 
     if (resetModes.includes(uiState.mode)) {
       broadcastUiState({
+        isRecording: false,
         mode: "idle",
-        status: getIdleStatusText(),
-        isRecording: false
+        status: getIdleStatusText()
       });
     }
   }, delayMs);
@@ -242,10 +301,10 @@ function positionPetWindowNearCursor() {
   const nextY = clamp(preferredY >= minY ? preferredY : fallbackY, minY, maxY);
 
   petWindow.setBounds({
-    x: nextX,
-    y: nextY,
+    height,
     width,
-    height
+    x: nextX,
+    y: nextY
   });
   lastPetAnchor = "cursor";
 }
@@ -270,10 +329,10 @@ function positionPetWindowNearActiveWindow(windowBounds) {
   const nextY = clamp(anchorPoint.y, minY, maxY);
 
   petWindow.setBounds({
-    x: nextX,
-    y: nextY,
+    height,
     width,
-    height
+    x: nextX,
+    y: nextY
   });
   lastPetAnchor = "active-window";
   return true;
@@ -324,41 +383,27 @@ function syncPetWindowVisibility() {
   }
 }
 
-function broadcastUiState(patch = {}) {
-  Object.assign(uiState, patch, { updatedAt: Date.now() });
-  persistRuntimeStateSnapshot();
-
-  for (const window of [petWindow, dashboardWindow]) {
-    if (!window || window.isDestroyed()) {
-      continue;
-    }
-
-    window.webContents.send("flow:ui-state", uiState);
-  }
-
-  syncPetWindowVisibility();
-}
-
 function buildRuntimeStateSnapshot() {
   return {
-    autoPaste: settings.autoPaste,
+    apiConfigured: desktopConfigStore.isConfigured(),
+    autoPaste: baseSettings.autoPaste,
     capturedAppName: lastCapturedContext?.appName ?? "",
     dashboardVisible: uiState.dashboardVisible,
-    hotkey: settings.hotkey,
+    hotkey: baseSettings.hotkey,
     hotkeyRegistered: uiState.hotkeyRegistered,
     hotkeyStatus: uiState.hotkeyStatus,
     hotkeyTriggerCount: uiState.hotkeyTriggerCount,
     isRecording: uiState.isRecording,
     lastHotkeyTriggeredAt: uiState.lastHotkeyTriggeredAt,
-    petAnchor: lastPetAnchor,
-    petVisible: Boolean(petWindow && !petWindow.isDestroyed() && petWindow.isVisible()),
-    petBounds: petWindow && !petWindow.isDestroyed() ? petWindow.getBounds() : null,
     micStatus: uiState.micStatus,
     mode: uiState.mode,
+    petAnchor: lastPetAnchor,
+    petBounds: petWindow && !petWindow.isDestroyed() ? petWindow.getBounds() : null,
+    petVisible: Boolean(petWindow && !petWindow.isDestroyed() && petWindow.isVisible()),
     provider: uiState.provider,
     status: uiState.status,
-    triggerLabel: settings.triggerLabel,
-    triggerMode: settings.triggerMode,
+    triggerLabel: baseSettings.triggerLabel,
+    triggerMode: baseSettings.triggerMode,
     updatedAt: uiState.updatedAt
   };
 }
@@ -373,6 +418,21 @@ function persistRuntimeStateSnapshot() {
       await fs.writeFile(runtimeStateFilePath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
     })
     .catch(() => {});
+}
+
+function broadcastUiState(patch = {}) {
+  Object.assign(uiState, patch, { updatedAt: Date.now() });
+  persistRuntimeStateSnapshot();
+
+  for (const window of [petWindow, dashboardWindow]) {
+    if (!window || window.isDestroyed()) {
+      continue;
+    }
+
+    window.webContents.send("flow:ui-state", uiState);
+  }
+
+  syncPetWindowVisibility();
 }
 
 async function safeGetActiveContext() {
@@ -418,30 +478,30 @@ function configurePermissions(session) {
 
 function createPetWindow() {
   petWindow = new BrowserWindow({
-    width: petWindowSize.width,
-    height: petWindowSize.height,
-    minWidth: petWindowSize.width,
-    minHeight: petWindowSize.height,
-    maxWidth: petWindowSize.width,
-    maxHeight: petWindowSize.height,
-    title: "Voice Flow",
-    frame: false,
-    transparent: true,
-    hasShadow: true,
-    resizable: false,
-    fullscreenable: false,
-    alwaysOnTop: true,
     acceptFirstMouse: true,
+    alwaysOnTop: true,
     focusable: false,
-    skipTaskbar: true,
+    frame: false,
+    fullscreenable: false,
+    hasShadow: true,
+    height: petWindowSize.height,
+    maxHeight: petWindowSize.height,
+    maxWidth: petWindowSize.width,
+    minHeight: petWindowSize.height,
+    minWidth: petWindowSize.width,
+    resizable: false,
     show: false,
+    skipTaskbar: true,
+    title: "Voice Flow",
+    transparent: true,
     vibrancy: "hud",
     webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, "preload.cjs"),
       sandbox: false
-    }
+    },
+    width: petWindowSize.width
   });
 
   configurePermissions(petWindow.webContents.session);
@@ -458,19 +518,19 @@ function createDashboardWindow() {
   }
 
   dashboardWindow = new BrowserWindow({
-    width: 420,
-    height: 620,
-    minWidth: 380,
-    minHeight: 560,
-    title: "Voice Flow Dashboard",
-    show: false,
     backgroundColor: "#f6f3ec",
+    height: 760,
+    minHeight: 640,
+    minWidth: 460,
+    show: false,
+    title: "Voice Flow Dashboard",
     webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, "preload.cjs"),
       sandbox: false
-    }
+    },
+    width: 520
   });
 
   configurePermissions(dashboardWindow.webContents.session);
@@ -499,6 +559,7 @@ function showDashboard() {
   window.show();
   window.focus();
   broadcastUiState({ dashboardVisible: true });
+  broadcastSettings();
 }
 
 function hideDashboard() {
@@ -508,6 +569,20 @@ function hideDashboard() {
 
   dashboardWindow.hide();
   broadcastUiState({ dashboardVisible: false });
+}
+
+async function ensureApiConfigured() {
+  if (desktopConfigStore.isConfigured()) {
+    return true;
+  }
+
+  showDashboard();
+  broadcastUiState({
+    isRecording: false,
+    mode: "error",
+    status: "Connect your API in the dashboard before dictating."
+  });
+  return false;
 }
 
 async function toggleDictationFromDashboard() {
@@ -530,12 +605,14 @@ async function toggleDictationFromDashboard() {
 }
 
 async function callDictationApi(payload) {
-  const response = await fetch(`${settings.apiBaseUrl}/v1/dictate`, {
-    method: "POST",
+  const { apiBaseUrl, apiToken } = desktopConfigStore.getApiCredentials();
+  const response = await fetch(`${apiBaseUrl}/v1/dictate`, {
+    body: JSON.stringify(payload),
     headers: {
+      Authorization: `Bearer ${apiToken}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify(payload)
+    method: "POST"
   });
 
   if (!response.ok) {
@@ -578,12 +655,14 @@ async function triggerDictationStart({ holdToTalk = false, source = "hotkey" } =
     return false;
   }
 
+  if (!(await ensureApiConfigured())) {
+    return false;
+  }
+
   broadcastUiState({
+    isRecording: false,
     mode: "arming",
-    status: holdToTalk
-      ? "Getting the microphone ready..."
-      : "Waking up Voice Flow...",
-    isRecording: false
+    status: holdToTalk ? "Getting the microphone ready..." : "Waking up Voice Flow..."
   });
 
   lastCapturedContext = await safeGetActiveContext();
@@ -608,38 +687,12 @@ function triggerDictationStop({ source = "hotkey" } = {}) {
 }
 
 async function ensureFnKeyListenerBinary() {
-  await fs.mkdir(path.dirname(fnKeyListenerBinaryPath), { recursive: true });
-
-  const sourceExists = fsSync.existsSync(fnKeyListenerSourcePath);
-
-  if (!sourceExists) {
-    throw new Error(`Fn key listener source is missing: ${fnKeyListenerSourcePath}`);
+  try {
+    await fs.access(getFnKeyListenerBinaryPath());
+    return getFnKeyListenerBinaryPath();
+  } catch {
+    throw new Error("Fn hold helper is missing. Run npm run build:fn-listener or rebuild the packaged app.");
   }
-
-  const sourceStat = await fs.stat(fnKeyListenerSourcePath);
-  const binaryStat = await fs.stat(fnKeyListenerBinaryPath).catch(() => null);
-  const shouldCompile = !binaryStat || sourceStat.mtimeMs > binaryStat.mtimeMs;
-
-  if (!shouldCompile) {
-    return;
-  }
-
-  await execFileAsync(
-    "clang",
-    [
-      fnKeyListenerSourcePath,
-      "-fobjc-arc",
-      "-framework",
-      "Cocoa",
-      "-framework",
-      "ApplicationServices",
-      "-o",
-      fnKeyListenerBinaryPath
-    ],
-    {
-      timeout: 30000
-    }
-  );
 }
 
 function handleFnKeyListenerMessage(rawLine) {
@@ -703,14 +756,16 @@ function handleFnKeyListenerMessage(rawLine) {
 }
 
 async function startFnKeyListener() {
-  if (!isMac || settings.triggerMode !== "fn_hold" || fnKeyListenerProcess) {
+  if (!isMac || baseSettings.triggerMode !== "fn_hold" || fnKeyListenerProcess) {
     return;
   }
 
+  let binaryPath = "";
+
   try {
-    await ensureFnKeyListenerBinary();
+    binaryPath = await ensureFnKeyListenerBinary();
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Fn key listener compilation failed.";
+    const message = error instanceof Error ? error.message : "Fn hold listener setup failed.";
 
     console.error(`Voice Flow failed to prepare fn hold listener: ${message}`);
     broadcastUiState({
@@ -720,7 +775,7 @@ async function startFnKeyListener() {
     return;
   }
 
-  const child = spawn(fnKeyListenerBinaryPath, [], {
+  const child = spawn(binaryPath, [], {
     stdio: ["ignore", "pipe", "pipe"]
   });
 
@@ -767,17 +822,17 @@ function stopFnKeyListener() {
 }
 
 function registerHotkey() {
-  if (settings.triggerMode === "fn_hold" && isMac) {
+  if (baseSettings.triggerMode === "fn_hold" && isMac) {
     return;
   }
 
   let registered = false;
 
   try {
-    registered = globalShortcut.register(settings.hotkey, () => {
+    registered = globalShortcut.register(baseSettings.hotkey, () => {
       const triggeredAt = recordTriggerActivity(`Hotkey is active. Last trigger: ${new Date().toISOString()}`);
 
-      console.log(`Voice Flow hotkey triggered (${settings.hotkey}) at ${triggeredAt}`);
+      console.log(`Voice Flow hotkey triggered (${baseSettings.hotkey}) at ${triggeredAt}`);
 
       void (async () => {
         if (uiState.mode === "processing") {
@@ -800,7 +855,7 @@ function registerHotkey() {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown hotkey registration error.";
 
-    console.error(`Voice Flow failed to register hotkey ${settings.hotkey}: ${message}`);
+    console.error(`Voice Flow failed to register hotkey ${baseSettings.hotkey}: ${message}`);
     broadcastUiState({
       hotkeyRegistered: false,
       hotkeyStatus: `Hotkey registration failed: ${message}`
@@ -808,43 +863,183 @@ function registerHotkey() {
     return;
   }
 
-  const isRegistered = registered && globalShortcut.isRegistered(settings.hotkey);
+  const isRegistered = registered && globalShortcut.isRegistered(baseSettings.hotkey);
 
   broadcastUiState({
     hotkeyRegistered: isRegistered,
     hotkeyStatus: isRegistered
-      ? `Hotkey is active: ${formatAcceleratorLabel(settings.hotkey)}`
-      : `Hotkey could not be registered. macOS may already be using ${formatAcceleratorLabel(settings.hotkey)}.`
+      ? `Hotkey is active: ${formatAcceleratorLabel(baseSettings.hotkey)}`
+      : `Hotkey could not be registered. macOS may already be using ${formatAcceleratorLabel(baseSettings.hotkey)}.`
   });
 
   if (isRegistered) {
-    console.log(`Voice Flow registered hotkey ${settings.hotkey}`);
+    console.log(`Voice Flow registered hotkey ${baseSettings.hotkey}`);
     return;
   }
 
-  console.warn(`Voice Flow could not register hotkey ${settings.hotkey}`);
+  console.warn(`Voice Flow could not register hotkey ${baseSettings.hotkey}`);
 }
 
-app.whenReady().then(() => {
+function initializeAutoUpdates() {
+  if (!app.isPackaged) {
+    setUpdateState({
+      message: "Auto-update is only active in packaged beta builds.",
+      progress: 0,
+      status: "disabled",
+      version: ""
+    });
+    return;
+  }
+
+  autoUpdater.allowPrerelease = true;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("checking-for-update", () => {
+    setUpdateState({
+      message: "Checking for beta updates...",
+      progress: 0,
+      status: "checking"
+    });
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    setUpdateState({
+      message: `Downloading beta update ${info.version}...`,
+      progress: 0,
+      status: "available",
+      version: info.version ?? ""
+    });
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    setUpdateState({
+      message: `Downloading beta update... ${Math.round(progress.percent)}%`,
+      progress: Math.round(progress.percent),
+      status: "downloading"
+    });
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    setUpdateState({
+      message: "You're already on the latest beta build.",
+      progress: 0,
+      status: "idle",
+      version: ""
+    });
+  });
+
+  autoUpdater.on("update-downloaded", async (info) => {
+    setUpdateState({
+      message: `Beta update ${info.version} is ready to install.`,
+      progress: 100,
+      status: "downloaded",
+      version: info.version ?? ""
+    });
+
+    const result = await dialog.showMessageBox({
+      buttons: ["Restart to Install", "Later"],
+      cancelId: 1,
+      defaultId: 0,
+      detail: `Voice Flow ${info.version} has finished downloading. Restart whenever you're ready to install it.`,
+      message: "A new Voice Flow beta is ready.",
+      type: "info"
+    });
+
+    if (result.response === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  });
+
+  autoUpdater.on("error", (error) => {
+    const message = error instanceof Error ? error.message : "Unknown update error.";
+    setUpdateState({
+      message: `Update check failed: ${message}`,
+      progress: 0,
+      status: "error"
+    });
+  });
+
+  setTimeout(() => {
+    void checkForUpdates();
+  }, 3500);
+}
+
+async function checkForUpdates() {
+  if (!app.isPackaged) {
+    setUpdateState({
+      message: "Auto-update is only active in packaged beta builds.",
+      progress: 0,
+      status: "disabled",
+      version: ""
+    });
+    return getSettingsSnapshot();
+  }
+
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown update error.";
+    setUpdateState({
+      message: `Update check failed: ${message}`,
+      progress: 0,
+      status: "error"
+    });
+  }
+
+  return getSettingsSnapshot();
+}
+
+function installDownloadedUpdate() {
+  if (updateState.status !== "downloaded") {
+    throw new Error("No downloaded update is ready to install yet.");
+  }
+
+  autoUpdater.quitAndInstall();
+}
+
+function refreshIdleUiState(message = "") {
+  broadcastUiState({
+    isRecording: false,
+    micStatus: getMicrophoneAccessStatus().message,
+    mode: "idle",
+    status: message || getIdleStatusText()
+  });
+}
+
+app.whenReady().then(async () => {
+  await desktopConfigStore.load();
   createPetWindow();
   createDashboardWindow();
+  broadcastSettings();
   void startFnKeyListener();
   registerHotkey();
-  broadcastUiState({
-    micStatus: getMicrophoneAccessStatus().message
-  });
+  refreshIdleUiState();
+  initializeAutoUpdates();
+
+  if (!desktopConfigStore.isConfigured()) {
+    showDashboard();
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createPetWindow();
       createDashboardWindow();
-    } else {
-      showDashboard();
+      broadcastSettings();
+      refreshIdleUiState();
+      return;
     }
+
+    showDashboard();
   });
 });
 
 app.on("second-instance", () => {
+  if (!desktopConfigStore.isConfigured()) {
+    showDashboard();
+    return;
+  }
+
   applyPetOverlayBehavior();
   revealPetWindow({
     context: lastCapturedContext,
@@ -858,7 +1053,25 @@ app.on("will-quit", () => {
   globalShortcut.unregisterAll();
 });
 
-ipcMain.handle("flow:get-settings", async () => settings);
+ipcMain.handle("flow:get-settings", async () => getSettingsSnapshot());
+ipcMain.handle("flow:save-api-config", async (_event, payload) => {
+  const snapshot = await desktopConfigStore.save(payload);
+  broadcastSettings();
+  refreshIdleUiState("API connected. Voice Flow is ready.");
+  return snapshot;
+});
+ipcMain.handle("flow:reset-api-config", async () => {
+  const snapshot = await desktopConfigStore.reset();
+  broadcastSettings();
+  showDashboard();
+  refreshIdleUiState();
+  return snapshot;
+});
+ipcMain.handle("flow:check-for-updates", async () => checkForUpdates());
+ipcMain.handle("flow:install-update", async () => {
+  installDownloadedUpdate();
+  return true;
+});
 ipcMain.handle("flow:get-context", async () => lastCapturedContext ?? safeGetActiveContext());
 ipcMain.handle("flow:get-microphone-status", async () => getMicrophoneAccessStatus());
 ipcMain.handle("flow:ensure-microphone-access", async () => ensureMicrophoneAccess());
@@ -875,21 +1088,18 @@ ipcMain.handle("flow:hide-dashboard", async () => {
   hideDashboard();
   return true;
 });
-ipcMain.handle("flow:toggle-dictation", async () => {
-  return toggleDictationFromDashboard();
-});
+ipcMain.handle("flow:toggle-dictation", async () => toggleDictationFromDashboard());
 ipcMain.handle("flow:open-external-url", async (_event, url) => {
   await shell.openExternal(url);
   return true;
 });
-
 ipcMain.handle("flow:process-dictation", async (_event, payload) => {
   try {
     const result = await callDictationApi(payload);
     const textToPaste = result.polishedText || result.rawTranscript || "";
     let pasteError = "";
 
-    if (settings.autoPaste && textToPaste) {
+    if (baseSettings.autoPaste && textToPaste) {
       try {
         await pasteText(textToPaste);
       } catch (error) {
@@ -898,13 +1108,13 @@ ipcMain.handle("flow:process-dictation", async (_event, payload) => {
     }
 
     broadcastUiState({
-      mode: pasteError ? "error" : "done",
       isRecording: false,
-      status: pasteError || (settings.autoPaste ? "Pasted back into your app." : `Transcribed with ${result.provider}.`),
-      rawTranscript: result.rawTranscript,
+      micStatus: getMicrophoneAccessStatus().message,
+      mode: pasteError ? "error" : "done",
       polishedText: textToPaste,
       provider: result.provider,
-      micStatus: getMicrophoneAccessStatus().message
+      rawTranscript: result.rawTranscript,
+      status: pasteError || (baseSettings.autoPaste ? "Pasted back into your app." : `Transcribed with ${result.provider}.`)
     });
 
     return {
@@ -915,10 +1125,10 @@ ipcMain.handle("flow:process-dictation", async (_event, payload) => {
     const message = error instanceof Error ? error.message : "Dictation failed.";
 
     broadcastUiState({
-      mode: "error",
       isRecording: false,
-      status: message,
-      micStatus: getMicrophoneAccessStatus().message
+      micStatus: getMicrophoneAccessStatus().message,
+      mode: "error",
+      status: message
     });
 
     return {

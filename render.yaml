@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: voice-flow-api
+    runtime: node
+    plan: starter
+    rootDir: .
+    buildCommand: npm ci
+    startCommand: npm run start -w @voice-flow/api
+    healthCheckPath: /health
+    envVars:
+      - key: FLOW_API_HOST
+        value: 0.0.0.0
+      - key: FLOW_TRANSCRIBE_PROVIDER
+        value: openai
+      - key: FLOW_OPENAI_BASE_URL
+        value: https://api.openai.com/v1
+      - key: FLOW_TRANSCRIBE_MODEL
+        sync: false
+      - key: FLOW_POLISH_ENABLED
+        value: "true"
+      - key: FLOW_POLISH_MODEL
+        sync: false
+      - key: FLOW_API_TOKENS
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false

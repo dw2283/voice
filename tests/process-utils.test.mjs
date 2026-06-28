@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildVoiceEnv, getTriggerLabel, getTriggerMode, isPolishEnabled } from "../scripts/process-utils.mjs";
+import {
+  buildVoiceEnv,
+  getTriggerLabel,
+  getTriggerMode,
+  isPolishEnabled,
+  needsLocalWhisper
+} from "../scripts/process-utils.mjs";
 
 test("buildVoiceEnv uses the official OpenAI base URL by default", () => {
   const env = buildVoiceEnv({});
@@ -64,9 +70,22 @@ test("buildVoiceEnv enables polish by default", () => {
   assert.equal(env.FLOW_POLISH_ENABLED, "true");
 });
 
+test("buildVoiceEnv seeds a local desktop service token by default", () => {
+  const env = buildVoiceEnv({});
+
+  assert.equal(env.FLOW_API_TOKEN, "local-dev-token");
+  assert.equal(env.FLOW_API_TOKENS, "local-dev-token");
+});
+
 test("isPolishEnabled only disables polish for explicit false-like values", () => {
   assert.equal(isPolishEnabled({ FLOW_POLISH_ENABLED: "false" }), false);
   assert.equal(isPolishEnabled({ FLOW_POLISH_ENABLED: "off" }), false);
   assert.equal(isPolishEnabled({ FLOW_POLISH_ENABLED: "true" }), true);
   assert.equal(isPolishEnabled({}), true);
+});
+
+test("needsLocalWhisper only when OpenAI mode has no remote transcription model", () => {
+  assert.equal(needsLocalWhisper({ FLOW_TRANSCRIBE_PROVIDER: "openai", FLOW_TRANSCRIBE_MODEL: "" }), true);
+  assert.equal(needsLocalWhisper({ FLOW_TRANSCRIBE_PROVIDER: "openai", FLOW_TRANSCRIBE_MODEL: "gpt-4o-mini-transcribe" }), false);
+  assert.equal(needsLocalWhisper({ FLOW_TRANSCRIBE_PROVIDER: "mock", FLOW_TRANSCRIBE_MODEL: "" }), false);
 });

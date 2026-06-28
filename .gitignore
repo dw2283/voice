@@ -3,6 +3,8 @@ node_modules
 .cache
 .agent
 apps/desktop/bin/voice-flow-fn-listener
+apps/desktop/build
+apps/desktop/dist
 __pycache__
 .DS_Store
 .env
