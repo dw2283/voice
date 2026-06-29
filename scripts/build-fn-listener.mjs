@@ -9,7 +9,8 @@ const sourcePath = path.join(repoRoot, "apps", "desktop", "src", "fn-key-listene
 const outputDir = path.join(repoRoot, "apps", "desktop", "build", "bin");
 const outputPath = path.join(outputDir, "voice-flow-fn-listener");
 const tempDir = path.join(outputDir, ".tmp");
-const requestedArchitectures = (process.env.VOICE_FLOW_FN_LISTENER_ARCHS ?? "arm64,x86_64")
+const defaultArchitecture = process.arch === "x64" ? "x86_64" : "arm64";
+const requestedArchitectures = (process.env.VOICE_FLOW_FN_LISTENER_ARCHS ?? defaultArchitecture)
   .split(",")
   .map((value) => value.trim())
   .filter(Boolean);

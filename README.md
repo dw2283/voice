@@ -60,9 +60,9 @@ If you want local Whisper instead of cloud transcription, clear `FLOW_TRANSCRIBE
 - `npm run voice:restart`: clean restart the full app.
 - `npm run dev:api`: run only the API in the foreground.
 - `npm run dev:desktop`: run only Electron in the foreground.
-- `npm run build:fn-listener`: compile the universal macOS helper used for `fn` hold detection.
+- `npm run build:fn-listener`: compile the current-machine macOS helper used for `fn` hold detection.
 - `npm run release:mac`: build the signed/notarized Mac beta payloads when release secrets are configured.
-- `npm run release:mac:dir`: build an unpacked Mac app directory for local packaging verification.
+- `npm run release:mac:dir`: build an unpacked Apple Silicon Mac app directory for local packaging verification.
 
 `voice:manual-check` writes its latest result to `.cache/manual-check-result.json` so the final human check can be recorded without relying on chat history.
 `voice:focus-smoke` writes its latest result to `.cache/focus-smoke-result.json`; it only automates the fallback hotkey path, so `fn` mode still needs `voice:manual-check`.
@@ -81,5 +81,5 @@ If you want local Whisper instead of cloud transcription, clear `FLOW_TRANSCRIBE
 - `apps/api` serves the playground and health check on `http://127.0.0.1:8000/` by default, or any host you set with `FLOW_API_HOST`.
 - `apps/desktop` defaults to a hidden AI voice overlay and wakes near the active window, falling back to the mouse cursor when needed.
 - Browser `SpeechRecognition` is disabled for the desktop path; audio goes through the backend.
-- Desktop builds resolve the `fn` listener from a bundled binary instead of compiling Objective-C at runtime.
+- Desktop release builds currently target Apple Silicon first and resolve the `fn` listener from a bundled binary instead of compiling Objective-C at runtime.
 - `render.yaml` defines a reference Render deployment for the API, and `.github/workflows/release.yml` defines the Mac beta release pipeline.

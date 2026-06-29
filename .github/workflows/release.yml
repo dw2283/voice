@@ -36,12 +36,13 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VOICE_FLOW_FN_LISTENER_ARCHS: arm64
         run: |
           npm run build:fn-listener
-          npx electron-builder --config apps/desktop/electron-builder.mjs --mac --universal --publish always
+          npx electron-builder --config apps/desktop/electron-builder.mjs --mac --arm64 --publish always
 
       - name: Verify Gatekeeper assessment
-        run: spctl --assess --type exec -vv "apps/desktop/dist/mac-universal/Voice Flow.app"
+        run: spctl --assess --type exec -vv "apps/desktop/dist/mac-arm64/Voice Flow.app"
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4

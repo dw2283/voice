@@ -47,17 +47,16 @@ export default {
   mac: {
     binaries: [path.join(repoRoot, "apps", "desktop", "build", "bin", "voice-flow-fn-listener")],
     category: "public.app-category.productivity",
-    x64ArchFiles: "Contents/Resources/bin/voice-flow-fn-listener",
     hardenedRuntime: true,
     gatekeeperAssess: false,
     target: [
       {
         target: "dmg",
-        arch: ["universal"]
+        arch: ["arm64"]
       },
       {
         target: "zip",
-        arch: ["universal"]
+        arch: ["arm64"]
       }
     ],
     entitlements: path.join(__dirname, "entitlements.mac.plist"),
