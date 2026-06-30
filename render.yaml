@@ -15,11 +15,11 @@ services:
       - key: FLOW_OPENAI_BASE_URL
         value: https://api.openai.com/v1
       - key: FLOW_TRANSCRIBE_MODEL
-        sync: false
+        value: gpt-4o-mini-transcribe
       - key: FLOW_POLISH_ENABLED
         value: "true"
       - key: FLOW_POLISH_MODEL
-        sync: false
+        value: gpt-4.1-mini
       - key: FLOW_API_TOKENS
         sync: false
       - key: OPENAI_API_KEY

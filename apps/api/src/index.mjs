@@ -124,6 +124,8 @@ function readJsonBody(request) {
 }
 
 const server = http.createServer(async (request, response) => {
+  let traceId = "";
+
   try {
     if (!request.url || !request.method) {
       writeJson(response, 400, { error: "Invalid request" });
@@ -180,6 +182,7 @@ const server = http.createServer(async (request, response) => {
         ...dictationRequest,
         traceId: dictationRequest.traceId || createTraceId()
       };
+      traceId = dictationRequest.traceId;
 
       const validateMs = performance.now() - validationStartedAt;
       const providerStartedAt = performance.now();
@@ -208,6 +211,13 @@ const server = http.createServer(async (request, response) => {
     });
   } catch (error) {
     const { payload, statusCode } = toErrorResponse(error);
+    logTiming("dictate.failed", {
+      error: payload.error,
+      method: request.method ?? "",
+      statusCode,
+      traceId,
+      url: request.url ?? ""
+    });
     writeJson(response, statusCode, payload);
   }
 });

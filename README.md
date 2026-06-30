@@ -41,6 +41,26 @@ Set `FLOW_POLISH_ENABLED=false` to skip the AI polish pass entirely. In that mod
 
 If you want local Whisper instead of cloud transcription, clear `FLOW_TRANSCRIBE_MODEL` and keep the local Whisper settings. `voice:setup` and `voice:doctor` will then expect the workspace `.venv` and `faster-whisper`.
 
+## Cloud Beta
+
+The fastest way to share Voice Flow with other people is to host `apps/api` on a public URL and treat the Mac app as a client.
+
+1. Deploy `apps/api` to Render or another public Node host.
+2. Set `OPENAI_API_KEY` plus one or more `FLOW_API_TOKENS` values on that hosted API.
+3. Send testers the packaged Mac app, the hosted `API Base URL`, and their Voice Flow token.
+4. On first launch, they open Settings and save those two values.
+
+`render.yaml` already includes the reference Render service with cloud defaults:
+
+- `FLOW_TRANSCRIBE_PROVIDER=openai`
+- `FLOW_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe`
+- `FLOW_POLISH_ENABLED=true`
+- `FLOW_POLISH_MODEL=gpt-4.1-mini`
+
+Do not ship your raw OpenAI key inside the desktop app. Testers should only enter the hosted API route and the Voice Flow service token.
+
+See [docs/beta-distribution.md](/Users/dingwang/Documents/voice/docs/beta-distribution.md) for the exact deployment and tester handoff steps.
+
 ## Commands
 
 - `npm run voice:setup`: verify local setup and create missing config files.

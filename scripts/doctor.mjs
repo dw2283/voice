@@ -4,7 +4,9 @@ import path from "node:path";
 import { promisify } from "node:util";
 import {
   buildVoiceEnv,
+  getApiMode,
   isPolishEnabled,
+  isLocalApiBaseUrl,
   listProcesses,
   logsDir,
   needsLocalWhisper,
@@ -67,9 +69,11 @@ function checkEnv(env) {
   const polishEnabled = isPolishEnabled(env);
   const transcribeModel = env.FLOW_TRANSCRIBE_MODEL?.trim() || "";
   const needsOpenAIConfig = provider === "openai" && (polishEnabled || Boolean(transcribeModel));
+  const apiMode = getApiMode(env);
 
   addCheck(env.FLOW_TRANSCRIBE_PROVIDER ? "pass" : "fail", "FLOW_TRANSCRIBE_PROVIDER configured", env.FLOW_TRANSCRIBE_PROVIDER ? "set" : "missing");
   addCheck(env.FLOW_API_HOST ? "pass" : "fail", "FLOW_API_HOST configured", env.FLOW_API_HOST ? "set" : "missing");
+  addCheck("pass", "API mode", apiMode === "hosted" ? `FLOW_API_BASE_URL=${env.FLOW_API_BASE_URL}` : "local desktop + local API");
   addCheck("pass", "Polish pass", `FLOW_POLISH_ENABLED=${env.FLOW_POLISH_ENABLED}`);
   addCheck(env.FLOW_API_TOKEN ? "pass" : "warn", "Desktop API token seed", env.FLOW_API_TOKEN ? "set" : "blank");
   addCheck(
@@ -119,7 +123,7 @@ async function checkPythonWhisper(env) {
   }
 }
 
-async function checkProcesses() {
+async function checkProcesses(env) {
   let processes = [];
 
   try {
@@ -137,8 +141,18 @@ async function checkProcesses() {
     processInfo.command.includes("node_modules/electron/dist/Electron.app/Contents/MacOS/Electron src/main.mjs")
   );
   const whisperWorker = processes.filter((processInfo) => processInfo.command.includes("local-whisper-worker.py"));
+  const expectsLocalApi = isLocalApiBaseUrl(env.FLOW_API_BASE_URL);
 
-  addCheck(api.length === 1 ? "pass" : "fail", "One API process", `count=${api.length}`);
+  if (expectsLocalApi) {
+    addCheck(api.length === 1 ? "pass" : "fail", "One API process", `count=${api.length}`);
+  } else {
+    addCheck(
+      api.length <= 1 ? "pass" : "warn",
+      "Local API process",
+      api.length === 0 ? "not required because FLOW_API_BASE_URL points to a hosted API" : `optional local process count=${api.length}`
+    );
+  }
+
   addCheck(desktopWrapper.length === 1 ? "pass" : "fail", "One desktop launcher process", `count=${desktopWrapper.length}`);
   addCheck(electronMain.length === 1 ? "pass" : "fail", "One Electron main process", `count=${electronMain.length}`);
   addCheck(whisperWorker.length <= 1 ? "pass" : "warn", "Whisper worker count", `count=${whisperWorker.length}`);
@@ -184,7 +198,7 @@ const env = buildVoiceEnv(envFile);
 await checkFileSystem(env);
 checkEnv(env);
 await checkPythonWhisper(env);
-await checkProcesses();
+await checkProcesses(env);
 await checkApiHealth(env.FLOW_API_BASE_URL);
 await checkLogs();
 printResults();

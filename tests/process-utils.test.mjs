@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildVoiceEnv,
+  getApiMode,
   getTriggerLabel,
   getTriggerMode,
   isPolishEnabled,
+  isLocalApiBaseUrl,
   needsLocalWhisper
 } from "../scripts/process-utils.mjs";
 
@@ -75,6 +77,17 @@ test("buildVoiceEnv seeds a local desktop service token by default", () => {
 
   assert.equal(env.FLOW_API_TOKEN, "local-dev-token");
   assert.equal(env.FLOW_API_TOKENS, "local-dev-token");
+});
+
+test("isLocalApiBaseUrl recognizes localhost routes", () => {
+  assert.equal(isLocalApiBaseUrl("http://127.0.0.1:8000"), true);
+  assert.equal(isLocalApiBaseUrl("http://localhost:3000"), true);
+  assert.equal(isLocalApiBaseUrl("https://voice.example.com"), false);
+});
+
+test("getApiMode reports hosted mode for non-local API routes", () => {
+  assert.equal(getApiMode({ FLOW_API_BASE_URL: "http://127.0.0.1:8000" }), "local");
+  assert.equal(getApiMode({ FLOW_API_BASE_URL: "https://voice.example.com" }), "hosted");
 });
 
 test("isPolishEnabled only disables polish for explicit false-like values", () => {

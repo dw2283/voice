@@ -718,14 +718,21 @@ async function toggleDictationFromDashboard() {
 
 async function callDictationApi(payload) {
   const { apiBaseUrl, apiToken } = desktopConfigStore.getApiCredentials();
-  const response = await fetch(`${apiBaseUrl}/v1/dictate`, {
-    body: JSON.stringify(payload),
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-      "Content-Type": "application/json"
-    },
-    method: "POST"
-  });
+  let response;
+
+  try {
+    response = await fetch(`${apiBaseUrl}/v1/dictate`, {
+      body: JSON.stringify(payload),
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    });
+  } catch (error) {
+    const message = error instanceof Error && error.message ? error.message : "Unknown network error.";
+    throw new Error(`Could not reach the Voice Flow API at ${apiBaseUrl}. Make sure the backend is running and the API Base URL is correct. (${message})`);
+  }
 
   if (!response.ok) {
     const errorText = await response.text();

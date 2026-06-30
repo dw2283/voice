@@ -24,6 +24,15 @@ function buildSecureStorageMessage() {
   return "Voice Flow needs macOS secure storage before it can save an API token on this Mac.";
 }
 
+async function fileExists(filePath) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function sanitizeApiBaseUrl(value) {
   return String(value ?? "").trim().replace(/\/+$/, "");
 }
@@ -44,6 +53,9 @@ export function createDesktopConfigStore({ app, safeStorage, env = process.env }
   const userDataPath = app.getPath("userData");
   const configPath = path.join(userDataPath, configFileName);
   const tokenPath = path.join(userDataPath, tokenFileName);
+  const legacyUserDataPath = path.join(path.dirname(userDataPath), "Electron");
+  const legacyConfigPath = path.join(legacyUserDataPath, configFileName);
+  const legacyTokenPath = path.join(legacyUserDataPath, tokenFileName);
   const envDefaults = {
     apiBaseUrl: defaultApiBaseUrl(env, app.isPackaged),
     apiToken: defaultApiToken(env, app.isPackaged)
@@ -81,11 +93,48 @@ export function createDesktopConfigStore({ app, safeStorage, env = process.env }
     };
   }
 
+  async function maybeMigrateLegacyPackagedConfig() {
+    if (!app.isPackaged || userDataPath === legacyUserDataPath) {
+      return;
+    }
+
+    const [hasCurrentConfig, hasCurrentToken, hasLegacyConfig, hasLegacyToken] = await Promise.all([
+      fileExists(configPath),
+      fileExists(tokenPath),
+      fileExists(legacyConfigPath),
+      fileExists(legacyTokenPath)
+    ]);
+
+    if (!hasLegacyConfig && !hasLegacyToken) {
+      return;
+    }
+
+    if (!hasCurrentConfig && hasLegacyConfig) {
+      const legacyRawConfig = await fs.readFile(legacyConfigPath, "utf8");
+      const legacyParsedConfig = JSON.parse(legacyRawConfig);
+      const migratedApiBaseUrl = sanitizeApiBaseUrl(legacyParsedConfig.apiBaseUrl);
+
+      if (migratedApiBaseUrl) {
+        await fs.writeFile(configPath, `${JSON.stringify({ apiBaseUrl: migratedApiBaseUrl }, null, 2)}\n`, "utf8");
+      }
+    }
+
+    if (!hasCurrentToken && hasLegacyToken) {
+      await fs.copyFile(legacyTokenPath, tokenPath);
+    }
+  }
+
   async function load() {
     await fs.mkdir(userDataPath, { recursive: true });
     state.apiBaseUrl = envDefaults.apiBaseUrl;
     state.apiToken = envDefaults.apiToken;
     state.lastError = "";
+
+    try {
+      await maybeMigrateLegacyPackagedConfig();
+    } catch (error) {
+      state.lastError = error instanceof Error ? `Could not migrate existing desktop config: ${error.message}` : "Could not migrate existing desktop config.";
+    }
 
     try {
       const rawConfig = await fs.readFile(configPath, "utf8");

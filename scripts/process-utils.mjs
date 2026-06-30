@@ -90,6 +90,25 @@ export function buildVoiceEnv(extraEnv = {}) {
   };
 }
 
+export function isLocalApiBaseUrl(value) {
+  const raw = String(value ?? "").trim();
+
+  if (!raw) {
+    return false;
+  }
+
+  try {
+    const url = new URL(raw);
+    return ["127.0.0.1", "localhost", "::1"].includes(url.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+export function getApiMode(env = process.env) {
+  return isLocalApiBaseUrl(env.FLOW_API_BASE_URL) ? "local" : "hosted";
+}
+
 export function needsLocalWhisper(env = process.env) {
   const provider = String(env.FLOW_TRANSCRIBE_PROVIDER ?? "mock").trim().toLowerCase();
   const transcribeModel = String(env.FLOW_TRANSCRIBE_MODEL ?? "").trim();

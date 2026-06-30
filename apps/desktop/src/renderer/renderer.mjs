@@ -109,7 +109,7 @@ function updateConnectionPanel() {
   connectionStatusEl.dataset.ready = String(configured);
   connectionStatusEl.textContent = configured
     ? "Voice Flow is connected and ready to dictate."
-    : "Voice Flow needs an API route and token before dictation can start.";
+    : "Voice Flow needs an API route and token from your beta host before dictation can start.";
 
   savedRouteValueEl.textContent = settings?.apiBaseUrl || "Not configured.";
   savedTokenValueEl.textContent = settings?.hasApiToken ? settings.apiTokenMasked || "Stored securely." : "Not configured.";

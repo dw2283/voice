@@ -130,3 +130,36 @@ test("desktop config store refuses to save tokens without secure storage", async
     );
   });
 });
+
+test("packaged desktop config store migrates existing Electron settings on first launch", async () => {
+  await withTempDir(async (tempDir) => {
+    const parentDir = path.join(tempDir, "Application Support");
+    const legacyDir = path.join(parentDir, "Electron");
+    const packagedDir = path.join(parentDir, "Voice Flow");
+    const safeStorage = createFakeSafeStorage();
+
+    await fs.mkdir(legacyDir, { recursive: true });
+    await fs.writeFile(
+      path.join(legacyDir, "desktop-config.json"),
+      `${JSON.stringify({ apiBaseUrl: "http://127.0.0.1:8000/" }, null, 2)}\n`,
+      "utf8"
+    );
+    await fs.writeFile(path.join(legacyDir, "desktop-token.bin"), safeStorage.encryptString("local-dev-token"));
+
+    const store = createDesktopConfigStore({
+      app: createFakeApp(packagedDir, true),
+      env: {},
+      safeStorage
+    });
+
+    const loaded = await store.load();
+
+    assert.equal(loaded.apiBaseUrl, "http://127.0.0.1:8000");
+    assert.equal(loaded.apiConfigured, true);
+    assert.equal(loaded.hasApiToken, true);
+    assert.deepEqual(store.getApiCredentials(), {
+      apiBaseUrl: "http://127.0.0.1:8000",
+      apiToken: "local-dev-token"
+    });
+  });
+});
