@@ -14,7 +14,7 @@ import {
   shell,
   systemPreferences
 } from "electron";
-import { autoUpdater } from "electron-updater";
+import electronUpdater from "electron-updater";
 import { createDesktopConfigStore } from "./config-store.mjs";
 import { getActiveContext } from "./macos-context.mjs";
 import { pasteText } from "./paste-text.mjs";
@@ -22,6 +22,7 @@ import { installRuntimeGuards } from "../../../packages/shared/src/runtime-guard
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const { autoUpdater } = electronUpdater;
 const dashboardHtmlPath = path.join(__dirname, "renderer", "index.html");
 const petHtmlPath = path.join(__dirname, "renderer", "pet.html");
 const userDataPath = app.getPath("userData");
