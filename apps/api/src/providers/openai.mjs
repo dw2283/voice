@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import {
   buildPolishInstructions,
   buildPolishRewriteInput,
@@ -17,6 +18,18 @@ function requireEnv(name) {
 
 function getBaseUrl() {
   return (process.env.FLOW_OPENAI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/+$/, "");
+}
+
+function roundTimingMs(value) {
+  return Number(value.toFixed(1));
+}
+
+function logTiming(event, payload) {
+  console.info(`Voice Flow timing ${JSON.stringify({
+    event,
+    scope: "api-provider",
+    ...payload
+  })}`);
 }
 
 function isPolishEnabled() {
@@ -159,18 +172,30 @@ export function createOpenAIProvider() {
       }
     },
     async transcribeAndPolish(request) {
+      const providerStartedAt = performance.now();
       const transcribeModel = process.env.FLOW_TRANSCRIBE_MODEL?.trim() || null;
       const polishEnabled = isPolishEnabled();
       const needsOpenAIKey = Boolean(transcribeModel) || polishEnabled;
       const apiKey = needsOpenAIKey ? requireEnv("OPENAI_API_KEY") : null;
+      const transcribeStartedAt = performance.now();
       const transcriptResult = await getTranscriptFromAvailableSource({
         apiKey,
         request,
         transcribeModel
       });
+      const transcribeMs = performance.now() - transcribeStartedAt;
       const rawTranscript = transcriptResult.rawTranscript;
 
       if (!polishEnabled) {
+        logTiming("dictation.completed", {
+          polish: "disabled",
+          polishMs: 0,
+          totalMs: roundTimingMs(performance.now() - providerStartedAt),
+          traceId: request.traceId || "",
+          transcribe: transcriptResult.modelInfo,
+          transcribeMs: roundTimingMs(transcribeMs)
+        });
+
         return {
           provider: "openai",
           rawTranscript,
@@ -184,12 +209,23 @@ export function createOpenAIProvider() {
       }
 
       const polishModel = requireEnv("FLOW_POLISH_MODEL");
+      const polishStartedAt = performance.now();
 
       const polishedText = await polishTranscript({
         apiKey,
         model: polishModel,
         rawTranscript,
         request
+      });
+      const polishMs = performance.now() - polishStartedAt;
+
+      logTiming("dictation.completed", {
+        polish: polishModel,
+        polishMs: roundTimingMs(polishMs),
+        totalMs: roundTimingMs(performance.now() - providerStartedAt),
+        traceId: request.traceId || "",
+        transcribe: transcriptResult.modelInfo,
+        transcribeMs: roundTimingMs(transcribeMs)
       });
 
       return {

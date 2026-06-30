@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import {
@@ -60,6 +61,10 @@ let fnKeyListenerReader = null;
 let runtimeStateWrite = Promise.resolve();
 let fnHoldPressed = false;
 let lastPetAnchor = "hidden";
+let fallbackHotkeyActive = false;
+let triggerDiagnosticsInterval = null;
+let triggerDiagnosticsRefreshInFlight = false;
+let lastObservedAccessibilityTrusted = null;
 const petWindowSize = {
   width: 154,
   height: 64
@@ -68,6 +73,7 @@ const configuredTriggerMode = String(process.env.FLOW_TRIGGER_MODE ?? (isMac ? "
   .trim()
   .toLowerCase();
 const configuredHotkey = process.env.FLOW_HOTKEY ?? "CommandOrControl+Shift+Space";
+const configuredHotkeyLabel = formatAcceleratorLabel(configuredHotkey);
 const baseSettings = {
   autoPaste: (process.env.FLOW_AUTO_PASTE ?? "true").toLowerCase() === "true",
   autoStopAfterSilenceMs: getNumberEnv("FLOW_AUTO_STOP_SILENCE_MS", 650, 350, 2000),
@@ -78,7 +84,7 @@ const baseSettings = {
     (process.env.FLOW_PREFER_BROWSER_SPEECH_RECOGNITION ?? "false").toLowerCase() === "true",
   transcribeModel: process.env.FLOW_TRANSCRIBE_MODEL ?? "",
   transcribeProvider: process.env.FLOW_TRANSCRIBE_PROVIDER ?? "mock",
-  triggerLabel: configuredTriggerMode === "fn_hold" && isMac ? "Fn (hold)" : formatAcceleratorLabel(configuredHotkey),
+  triggerLabel: configuredTriggerMode === "fn_hold" && isMac ? "Fn (hold)" : configuredHotkeyLabel,
   triggerMode: configuredTriggerMode
 };
 const desktopConfigStore = createDesktopConfigStore({
@@ -119,6 +125,102 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function getPackagedAppBundlePath() {
+  if (!app.isPackaged) {
+    return "";
+  }
+
+  return path.resolve(process.execPath, "..", "..", "..");
+}
+
+function getRecommendedApplicationsPath() {
+  const bundlePath = getPackagedAppBundlePath();
+
+  if (!bundlePath) {
+    return "";
+  }
+
+  return path.join("/Applications", path.basename(bundlePath));
+}
+
+function getEffectiveTriggerMode() {
+  if (baseSettings.triggerMode === "fn_hold" && isMac && fallbackHotkeyActive) {
+    return "hotkey";
+  }
+
+  return baseSettings.triggerMode;
+}
+
+function getEffectiveTriggerLabel() {
+  return getEffectiveTriggerMode() === "hotkey" ? configuredHotkeyLabel : baseSettings.triggerLabel;
+}
+
+function roundTimingMs(value) {
+  return Number(value.toFixed(1));
+}
+
+function getAccessibilityTrusted() {
+  if (!isMac || baseSettings.triggerMode !== "fn_hold") {
+    return null;
+  }
+
+  try {
+    return systemPreferences.isTrustedAccessibilityClient(false);
+  } catch {
+    return null;
+  }
+}
+
+function getTriggerDiagnostics() {
+  const accessibilityTrusted = getAccessibilityTrusted();
+  const packagedBundlePath = getPackagedAppBundlePath();
+  const inApplicationsFolder = Boolean(isMac && app.isPackaged && app.isInApplicationsFolder());
+  const recommendedApplicationsPath = getRecommendedApplicationsPath();
+  const helperBinaryPath = getFnKeyListenerBinaryPath();
+
+  return {
+    accessibilityTrusted,
+    appBundlePath: packagedBundlePath,
+    canMoveToApplications: Boolean(isMac && app.isPackaged && !inApplicationsFolder),
+    effectiveTriggerLabel: getEffectiveTriggerLabel(),
+    effectiveTriggerMode: getEffectiveTriggerMode(),
+    fnListenerRunning: Boolean(fnKeyListenerProcess),
+    helperBinaryExists: Boolean(helperBinaryPath),
+    helperBinaryPath,
+    inApplicationsFolder,
+    packagedBundlePath,
+    recommendedApplicationsPath,
+    stableInstallRecommended: Boolean(isMac && app.isPackaged && !inApplicationsFolder),
+    usingFallbackHotkey: fallbackHotkeyActive
+  };
+}
+
+function createTraceId() {
+  return `vf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeClientTimings(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const entries = Object.entries(value).filter(([, entryValue]) => Number.isFinite(entryValue));
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return Object.fromEntries(entries.map(([key, entryValue]) => [key, roundTimingMs(entryValue)]));
+}
+
+function logTiming(event, payload) {
+  console.info(`Voice Flow timing ${JSON.stringify({
+    event,
+    scope: "desktop-main",
+    ...payload
+  })}`);
+}
+
 function getNumberEnv(name, fallback, min, max) {
   const parsed = Number(process.env[name] ?? fallback);
 
@@ -135,6 +237,10 @@ function getSettingsSnapshot() {
     ...desktopConfigStore.getSnapshot(),
     canCheckForUpdates: app.isPackaged,
     isPackaged: app.isPackaged,
+    triggerDiagnostics: getTriggerDiagnostics(),
+    triggerFallbackActive: fallbackHotkeyActive,
+    triggerLabel: getEffectiveTriggerLabel(),
+    triggerMode: getEffectiveTriggerMode(),
     updateMessage: updateState.message,
     updateProgress: updateState.progress,
     updateStatus: updateState.status,
@@ -165,10 +271,14 @@ function getIdleStatusText() {
   }
 
   if (baseSettings.triggerMode === "fn_hold" && isMac) {
+    if (fallbackHotkeyActive) {
+      return `Press ${configuredHotkeyLabel} to dictate.`;
+    }
+
     return "Hold fn to dictate.";
   }
 
-  return "Press the hotkey to dictate.";
+  return `Press ${configuredHotkeyLabel} to dictate.`;
 }
 
 function toMicrophoneState(rawStatus) {
@@ -403,8 +513,9 @@ function buildRuntimeStateSnapshot() {
     petVisible: Boolean(petWindow && !petWindow.isDestroyed() && petWindow.isVisible()),
     provider: uiState.provider,
     status: uiState.status,
-    triggerLabel: baseSettings.triggerLabel,
-    triggerMode: baseSettings.triggerMode,
+    triggerFallbackActive: fallbackHotkeyActive,
+    triggerLabel: getEffectiveTriggerLabel(),
+    triggerMode: getEffectiveTriggerMode(),
     updatedAt: uiState.updatedAt
   };
 }
@@ -637,6 +748,185 @@ function sendDictationAction(payload) {
   petWindow?.webContents.send("flow:hotkey-toggle", payload);
 }
 
+async function handleConfiguredHotkeyTrigger() {
+  if (uiState.mode === "processing") {
+    return;
+  }
+
+  if (uiState.isRecording) {
+    triggerDictationStop({
+      source: fallbackHotkeyActive ? "hotkey-fallback" : "hotkey"
+    });
+    return;
+  }
+
+  await triggerDictationStart({
+    holdToTalk: false,
+    source: fallbackHotkeyActive ? "hotkey-fallback" : "hotkey"
+  });
+}
+
+function ensureConfiguredHotkeyRegistered() {
+  if (globalShortcut.isRegistered(baseSettings.hotkey)) {
+    return true;
+  }
+
+  return globalShortcut.register(baseSettings.hotkey, () => {
+    const triggeredAt = recordTriggerActivity(
+      fallbackHotkeyActive
+        ? `Fallback hotkey is active. Last trigger: ${new Date().toISOString()}`
+        : `Hotkey is active. Last trigger: ${new Date().toISOString()}`
+    );
+
+    console.log(
+      `Voice Flow ${fallbackHotkeyActive ? "fallback hotkey" : "hotkey"} triggered (${baseSettings.hotkey}) at ${triggeredAt}`
+    );
+
+    void handleConfiguredHotkeyTrigger();
+  });
+}
+
+function unregisterConfiguredHotkey() {
+  if (!globalShortcut.isRegistered(baseSettings.hotkey)) {
+    return;
+  }
+
+  globalShortcut.unregister(baseSettings.hotkey);
+}
+
+function syncTriggerStatus(statusMessage, registered, { idleStatusOverride = "" } = {}) {
+  const patch = {
+    hotkeyRegistered: registered,
+    hotkeyStatus: statusMessage
+  };
+
+  if (uiState.mode === "idle") {
+    patch.status = idleStatusOverride || getIdleStatusText();
+  }
+
+  broadcastUiState(patch);
+  broadcastSettings();
+}
+
+function activateHotkeyFallback(reasonMessage) {
+  let registered = false;
+
+  try {
+    registered = ensureConfiguredHotkeyRegistered() && globalShortcut.isRegistered(baseSettings.hotkey);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown hotkey registration error.";
+    fallbackHotkeyActive = false;
+    syncTriggerStatus(`${reasonMessage} Fallback hotkey registration failed: ${message}`, false);
+    return;
+  }
+
+  fallbackHotkeyActive = registered;
+
+  syncTriggerStatus(
+    registered
+      ? `${reasonMessage} Fallback hotkey active: ${configuredHotkeyLabel}.`
+      : `${reasonMessage} Fallback hotkey could not be registered. macOS may already be using ${configuredHotkeyLabel}.`,
+    registered,
+    {
+      idleStatusOverride: registered ? "" : reasonMessage
+    }
+  );
+}
+
+function deactivateHotkeyFallback(statusMessage) {
+  if (fallbackHotkeyActive) {
+    unregisterConfiguredHotkey();
+  }
+
+  fallbackHotkeyActive = false;
+  syncTriggerStatus(statusMessage, true);
+}
+
+function requestAccessibilityPrompt() {
+  if (!isMac || baseSettings.triggerMode !== "fn_hold") {
+    return false;
+  }
+
+  try {
+    return systemPreferences.isTrustedAccessibilityClient(true);
+  } catch {
+    return false;
+  }
+}
+
+async function restartFnKeyListener() {
+  stopFnKeyListener();
+  await startFnKeyListener();
+}
+
+async function refreshTriggerDiagnostics({ restartListener = false } = {}) {
+  if (triggerDiagnosticsRefreshInFlight) {
+    return getSettingsSnapshot();
+  }
+
+  triggerDiagnosticsRefreshInFlight = true;
+
+  try {
+    const accessibilityTrusted = getAccessibilityTrusted();
+    lastObservedAccessibilityTrusted = accessibilityTrusted;
+
+    if (baseSettings.triggerMode === "fn_hold" && isMac) {
+      if (restartListener || (accessibilityTrusted && fallbackHotkeyActive)) {
+        await restartFnKeyListener();
+      } else if (accessibilityTrusted && !fnKeyListenerProcess) {
+        await startFnKeyListener();
+      } else if (accessibilityTrusted === false && !fallbackHotkeyActive) {
+        activateHotkeyFallback(
+          "Fn hold listener needs Accessibility permission in System Settings > Privacy & Security > Accessibility."
+        );
+      }
+    }
+
+    broadcastSettings();
+    return getSettingsSnapshot();
+  } finally {
+    triggerDiagnosticsRefreshInFlight = false;
+  }
+}
+
+function startTriggerDiagnosticsMonitor() {
+  if (!isMac || baseSettings.triggerMode !== "fn_hold" || triggerDiagnosticsInterval) {
+    return;
+  }
+
+  triggerDiagnosticsInterval = setInterval(() => {
+    const accessibilityTrusted = getAccessibilityTrusted();
+
+    if (accessibilityTrusted === lastObservedAccessibilityTrusted) {
+      return;
+    }
+
+    lastObservedAccessibilityTrusted = accessibilityTrusted;
+
+    if (accessibilityTrusted) {
+      void refreshTriggerDiagnostics({
+        restartListener: true
+      });
+      return;
+    }
+
+    if (!fallbackHotkeyActive) {
+      activateHotkeyFallback(
+        "Fn hold listener needs Accessibility permission in System Settings > Privacy & Security > Accessibility."
+      );
+    }
+  }, 2500);
+}
+
+function stopTriggerDiagnosticsMonitor() {
+  if (!triggerDiagnosticsInterval) {
+    return;
+  }
+
+  clearInterval(triggerDiagnosticsInterval);
+  triggerDiagnosticsInterval = null;
+}
+
 function recordTriggerActivity(statusText) {
   const triggeredAt = new Date().toISOString();
   const nextTriggerCount = (uiState.hotkeyTriggerCount || 0) + 1;
@@ -714,10 +1004,12 @@ function handleFnKeyListenerMessage(rawLine) {
         ? "Fn hold listener is active."
         : "Fn hold listener needs Accessibility permission in System Settings > Privacy & Security > Accessibility.");
 
-    broadcastUiState({
-      hotkeyRegistered: trusted,
-      hotkeyStatus: message
-    });
+    if (trusted) {
+      deactivateHotkeyFallback(message);
+      return;
+    }
+
+    activateHotkeyFallback(message);
     return;
   }
 
@@ -769,10 +1061,7 @@ async function startFnKeyListener() {
     const message = error instanceof Error ? error.message : "Fn hold listener setup failed.";
 
     console.error(`Voice Flow failed to prepare fn hold listener: ${message}`);
-    broadcastUiState({
-      hotkeyRegistered: false,
-      hotkeyStatus: `Fn hold listener setup failed: ${message}`
-    });
+    activateHotkeyFallback(`Fn hold listener setup failed: ${message}`);
     return;
   }
 
@@ -805,10 +1094,7 @@ async function startFnKeyListener() {
 
     const detail = `Fn hold listener exited unexpectedly (code ${code ?? "null"}, signal ${signal ?? "none"}).`;
     console.error(detail);
-    broadcastUiState({
-      hotkeyRegistered: false,
-      hotkeyStatus: detail
-    });
+    activateHotkeyFallback(detail);
   });
 }
 
@@ -830,29 +1116,7 @@ function registerHotkey() {
   let registered = false;
 
   try {
-    registered = globalShortcut.register(baseSettings.hotkey, () => {
-      const triggeredAt = recordTriggerActivity(`Hotkey is active. Last trigger: ${new Date().toISOString()}`);
-
-      console.log(`Voice Flow hotkey triggered (${baseSettings.hotkey}) at ${triggeredAt}`);
-
-      void (async () => {
-        if (uiState.mode === "processing") {
-          return;
-        }
-
-        if (uiState.isRecording) {
-          triggerDictationStop({
-            source: "hotkey"
-          });
-          return;
-        }
-
-        await triggerDictationStart({
-          holdToTalk: false,
-          source: "hotkey"
-        });
-      })();
-    });
+    registered = ensureConfiguredHotkeyRegistered();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown hotkey registration error.";
 
@@ -865,6 +1129,7 @@ function registerHotkey() {
   }
 
   const isRegistered = registered && globalShortcut.isRegistered(baseSettings.hotkey);
+  fallbackHotkeyActive = false;
 
   broadcastUiState({
     hotkeyRegistered: isRegistered,
@@ -1014,6 +1279,7 @@ app.whenReady().then(async () => {
   createDashboardWindow();
   broadcastSettings();
   void startFnKeyListener();
+  startTriggerDiagnosticsMonitor();
   registerHotkey();
   refreshIdleUiState();
   initializeAutoUpdates();
@@ -1023,6 +1289,9 @@ app.whenReady().then(async () => {
   }
 
   app.on("activate", () => {
+    void startFnKeyListener();
+    startTriggerDiagnosticsMonitor();
+
     if (BrowserWindow.getAllWindows().length === 0) {
       createPetWindow();
       createDashboardWindow();
@@ -1049,9 +1318,14 @@ app.on("second-instance", () => {
 });
 
 app.on("will-quit", () => {
-  isQuitting = true;
-  stopFnKeyListener();
+  stopTriggerDiagnosticsMonitor();
   globalShortcut.unregisterAll();
+});
+
+app.on("before-quit", () => {
+  isQuitting = true;
+  clearPetHideTimer();
+  stopFnKeyListener();
 });
 
 ipcMain.handle("flow:get-settings", async () => getSettingsSnapshot());
@@ -1094,19 +1368,93 @@ ipcMain.handle("flow:open-external-url", async (_event, url) => {
   await shell.openExternal(url);
   return true;
 });
-ipcMain.handle("flow:process-dictation", async (_event, payload) => {
+ipcMain.handle("flow:refresh-trigger-diagnostics", async (_event, payload = {}) => {
+  return refreshTriggerDiagnostics({
+    restartListener: Boolean(payload.restartListener)
+  });
+});
+ipcMain.handle("flow:open-accessibility-settings", async () => {
+  if (!isMac) {
+    return false;
+  }
+
+  requestAccessibilityPrompt();
+
   try {
-    const result = await callDictationApi(payload);
+    await shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
+    return true;
+  } catch {
+    const errorMessage = await shell.openPath("/System/Applications/System Settings.app");
+    return errorMessage === "";
+  }
+});
+ipcMain.handle("flow:move-to-applications", async () => {
+  if (!isMac || !app.isPackaged || app.isInApplicationsFolder()) {
+    return false;
+  }
+
+  const accepted = await dialog.showMessageBox({
+    buttons: ["Move to Applications", "Cancel"],
+    cancelId: 1,
+    defaultId: 0,
+    detail:
+      "Installing Voice Flow in Applications makes macOS Accessibility permission far more stable, especially after app rebuilds and relaunches.",
+    message: "Move Voice Flow to Applications?",
+    type: "question"
+  });
+
+  if (accepted.response !== 0) {
+    return false;
+  }
+
+  const moved = app.moveToApplicationsFolder({
+    conflictHandler: () => true
+  });
+
+  return moved;
+});
+ipcMain.handle("flow:process-dictation", async (_event, payload) => {
+  const startedAt = performance.now();
+  const traceId = typeof payload?.traceId === "string" && payload.traceId.trim() ? payload.traceId.trim() : createTraceId();
+  const clientTimings = normalizeClientTimings(payload?.clientTimings);
+  const requestPayload = {
+    ...payload,
+    traceId
+  };
+
+  delete requestPayload.clientTimings;
+
+  try {
+    const apiStartedAt = performance.now();
+    const result = await callDictationApi(requestPayload);
+    const apiMs = performance.now() - apiStartedAt;
     const textToPaste = result.polishedText || result.rawTranscript || "";
     let pasteError = "";
+    let pasteMs = 0;
+    let clipboardRestoreDeferredMs = 0;
 
     if (baseSettings.autoPaste && textToPaste) {
       try {
-        await pasteText(textToPaste);
+        const pasteStartedAt = performance.now();
+        const pasteResult = await pasteText(textToPaste);
+        pasteMs = performance.now() - pasteStartedAt;
+        clipboardRestoreDeferredMs = pasteResult?.clipboardRestoreDeferredMs ?? 0;
       } catch (error) {
         pasteError = error instanceof Error ? error.message : "Paste automation failed.";
       }
     }
+
+    logTiming("dictation.completed", {
+      apiMs: roundTimingMs(apiMs),
+      autoPaste: baseSettings.autoPaste,
+      clientTimings,
+      clipboardRestoreDeferredMs,
+      pasteError,
+      pasteMs: roundTimingMs(pasteMs),
+      provider: result.provider,
+      totalMs: roundTimingMs(performance.now() - startedAt),
+      traceId
+    });
 
     broadcastUiState({
       isRecording: false,
@@ -1120,10 +1468,18 @@ ipcMain.handle("flow:process-dictation", async (_event, payload) => {
 
     return {
       ...result,
-      pasteError
+      pasteError,
+      traceId
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Dictation failed.";
+
+    logTiming("dictation.failed", {
+      clientTimings,
+      error: message,
+      totalMs: roundTimingMs(performance.now() - startedAt),
+      traceId
+    });
 
     broadcastUiState({
       isRecording: false,

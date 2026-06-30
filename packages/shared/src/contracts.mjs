@@ -32,6 +32,7 @@ export function assertDictationRequest(payload) {
     mimeType: ensureString(payload.mimeType, "mimeType", { optional: true }) || "audio/webm",
     finalOnly: Boolean(payload.finalOnly),
     debugTranscript: ensureString(payload.debugTranscript, "debugTranscript", { optional: true }),
+    traceId: ensureString(payload.traceId, "traceId", { optional: true }),
     userIntent: ensureString(payload.userIntent, "userIntent", { optional: true }),
     context: {
       platform: ensureString(payload.context?.platform, "context.platform", { optional: true }) || "unknown",
@@ -42,4 +43,3 @@ export function assertDictationRequest(payload) {
     }
   };
 }
-

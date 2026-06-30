@@ -7,317 +7,1146 @@
     <style>
       :root {
         color-scheme: light;
-        --bg: #f5efe5;
-        --panel: rgba(255, 251, 245, 0.92);
-        --panel-strong: #fffaf1;
-        --ink: #211814;
-        --muted: #7b6a5c;
-        --line: #dccab6;
-        --accent: #cf6a36;
-        --accent-soft: #ffe2d1;
-        --ok: #e1f3e5;
-        --warn: #fff1d6;
+        --bg-top: #f7f9fd;
+        --bg-bottom: #e9eef7;
+        --ink: #101828;
+        --muted: #66758f;
+        --muted-strong: #4d5f7b;
+        --line: rgba(92, 112, 150, 0.14);
+        --line-strong: rgba(92, 112, 150, 0.22);
+        --panel: rgba(255, 255, 255, 0.72);
+        --panel-strong: rgba(255, 255, 255, 0.88);
+        --panel-soft: rgba(246, 249, 255, 0.82);
+        --accent: #0a84ff;
+        --accent-strong: #0066d6;
+        --accent-soft: rgba(10, 132, 255, 0.14);
+        --success: #34c759;
+        --success-soft: rgba(52, 199, 89, 0.14);
+        --warning: #ff9f0a;
+        --warning-soft: rgba(255, 159, 10, 0.16);
+        --danger: #ff453a;
+        --danger-soft: rgba(255, 69, 58, 0.14);
+        --shadow-lg: 0 36px 76px rgba(15, 23, 42, 0.14);
+        --shadow-md: 0 20px 44px rgba(15, 23, 42, 0.1);
       }
 
       * {
         box-sizing: border-box;
       }
 
+      html,
+      body {
+        min-height: 100%;
+      }
+
       body {
         margin: 0;
-        font-family: "Avenir Next", "Segoe UI", sans-serif;
-        background:
-          radial-gradient(circle at top left, rgba(255, 228, 205, 0.95), transparent 34%),
-          radial-gradient(circle at bottom right, rgba(246, 215, 191, 0.9), transparent 28%),
-          var(--bg);
+        font-family: "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Arial", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
         color: var(--ink);
+        background:
+          radial-gradient(circle at 12% 16%, rgba(104, 179, 255, 0.32), transparent 26%),
+          radial-gradient(circle at 86% 18%, rgba(150, 213, 255, 0.28), transparent 22%),
+          radial-gradient(circle at 72% 84%, rgba(160, 182, 255, 0.2), transparent 24%),
+          linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+      }
+
+      body::before,
+      body::after {
+        content: "";
+        position: fixed;
+        width: 360px;
+        height: 360px;
+        border-radius: 50%;
+        filter: blur(72px);
+        opacity: 0.32;
+        pointer-events: none;
+      }
+
+      body::before {
+        top: -90px;
+        right: -40px;
+        background: rgba(90, 195, 255, 0.34);
+      }
+
+      body::after {
+        left: -110px;
+        bottom: -90px;
+        background: rgba(150, 132, 255, 0.2);
       }
 
       main {
-        padding: 18px;
+        padding: 28px;
       }
 
-      .shell {
-        display: grid;
-        gap: 16px;
+      .dashboard-shell {
+        position: relative;
+        max-width: 1120px;
+        margin: 0 auto;
       }
 
-      .panel {
-        background: var(--panel);
+      .app-surface {
+        position: relative;
+        overflow: hidden;
+        border-radius: 34px;
         border: 1px solid var(--line);
-        border-radius: 22px;
-        padding: 18px;
-        box-shadow: 0 20px 60px rgba(94, 61, 39, 0.08);
-        backdrop-filter: blur(10px);
+        background: linear-gradient(155deg, rgba(255, 255, 255, 0.86), rgba(244, 248, 255, 0.72));
+        box-shadow: var(--shadow-lg);
+        backdrop-filter: blur(30px) saturate(1.3);
+        -webkit-backdrop-filter: blur(30px) saturate(1.3);
       }
 
-      .hero,
-      .card,
-      form {
+      .app-surface::before {
+        content: "";
+        position: absolute;
+        top: -160px;
+        right: -120px;
+        width: 420px;
+        height: 420px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(105, 196, 255, 0.28), transparent 58%);
+        filter: blur(18px);
+        pointer-events: none;
+      }
+
+      .main-shell {
+        padding: 28px;
+        transition: transform 220ms ease, filter 220ms ease, opacity 220ms ease;
+      }
+
+      .dashboard-shell[data-settings-open="true"] .main-shell {
+        transform: scale(0.985) translateX(-8px);
+        filter: blur(4px);
+        opacity: 0.76;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 28px;
+      }
+
+      .brand {
         display: grid;
-        gap: 10px;
+        gap: 8px;
+        max-width: 26rem;
       }
 
-      .eyebrow {
+      .brand-tag {
         display: inline-flex;
+        align-items: center;
+        gap: 8px;
         width: fit-content;
-        padding: 6px 12px;
+        padding: 7px 12px;
         border-radius: 999px;
-        background: var(--accent-soft);
-        color: #863713;
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
+        background: rgba(255, 255, 255, 0.68);
+        border: 1px solid var(--line);
+        color: var(--muted-strong);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
       }
 
+      .brand-tag::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: linear-gradient(180deg, #72c3ff, var(--accent));
+        box-shadow: 0 0 0 5px rgba(10, 132, 255, 0.12);
+      }
+
       h1,
-      h2 {
+      h2,
+      h3,
+      p {
         margin: 0;
       }
 
-      h1 {
-        font-size: 32px;
-        line-height: 0.95;
+      h2 {
+        font-size: 30px;
+        line-height: 1.04;
         letter-spacing: -0.04em;
+        font-weight: 650;
       }
 
-      h2 {
-        font-size: 18px;
+      h3 {
+        font-size: 17px;
+        line-height: 1.12;
+        letter-spacing: -0.018em;
       }
 
       p {
-        margin: 0;
-        line-height: 1.55;
         color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
       }
 
-      .actions,
-      .inline-actions {
+      .brand h1 {
+        font-size: 24px;
+        line-height: 1.06;
+        letter-spacing: -0.03em;
+        font-weight: 650;
+      }
+
+      .toolbar {
         display: flex;
+        align-items: center;
         gap: 10px;
         flex-wrap: wrap;
       }
 
       button {
+        appearance: none;
         border: 0;
         border-radius: 999px;
-        padding: 12px 15px;
+        padding: 11px 17px;
         font: inherit;
+        font-size: 13px;
+        font-weight: 600;
         cursor: pointer;
+        transition:
+          transform 140ms ease,
+          box-shadow 180ms ease,
+          background 180ms ease,
+          opacity 180ms ease;
+      }
+
+      button:hover:not(:disabled) {
+        transform: translateY(-1px);
+      }
+
+      button:active:not(:disabled) {
+        transform: translateY(0);
       }
 
       button:disabled {
         cursor: not-allowed;
-        opacity: 0.55;
+        opacity: 0.52;
       }
 
       .primary {
-        background: var(--accent);
         color: white;
-        font-weight: 700;
+        background: linear-gradient(180deg, #30a0ff, var(--accent-strong));
+        box-shadow:
+          0 14px 24px rgba(10, 132, 255, 0.24),
+          inset 0 1px 0 rgba(255, 255, 255, 0.34);
       }
 
       .secondary {
-        background: white;
         color: var(--ink);
+        background: rgba(255, 255, 255, 0.72);
         border: 1px solid var(--line);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
       }
 
-      .stats {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+      .settings-button {
+        display: inline-flex;
+        align-items: center;
         gap: 10px;
       }
 
-      .stat {
+      .settings-button::before {
+        content: "VF";
+        display: inline-grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: rgba(10, 132, 255, 0.12);
+        color: var(--accent-strong);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+
+      .content-grid {
+        display: grid;
+        grid-template-columns: minmax(320px, 0.92fr) minmax(0, 1.38fr);
+        gap: 20px;
+        align-items: stretch;
+      }
+
+      .glass-card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 30px;
+        box-shadow: var(--shadow-md);
+        backdrop-filter: blur(24px) saturate(1.24);
+        -webkit-backdrop-filter: blur(24px) saturate(1.24);
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        width: fit-content;
+        padding: 7px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid var(--line);
+        color: var(--muted-strong);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: linear-gradient(180deg, #72c3ff, var(--accent));
+        box-shadow: 0 0 0 5px rgba(10, 132, 255, 0.12);
+      }
+
+      .voice-stage,
+      .result-panel {
+        padding: 30px;
+        display: grid;
+        gap: 22px;
+        min-height: 620px;
+      }
+
+      .voice-stage {
+        align-content: start;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(243, 248, 255, 0.76));
+      }
+
+      .stage-copy {
+        display: grid;
+        gap: 10px;
+        max-width: 26ch;
+      }
+
+      .voice-visual {
+        position: relative;
+        display: grid;
+        place-items: center;
+        min-height: 272px;
+        padding: 28px;
+        border-radius: 30px;
+        border: 1px solid var(--line);
+        background:
+          radial-gradient(circle at 50% 18%, rgba(120, 214, 255, 0.22), transparent 34%),
+          linear-gradient(180deg, rgba(252, 253, 255, 0.98), rgba(239, 246, 255, 0.9));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
+        overflow: hidden;
+      }
+
+      .voice-visual::before,
+      .voice-visual::after {
+        content: "";
+        position: absolute;
+        border-radius: 50%;
+        pointer-events: none;
+      }
+
+      .voice-visual::before {
+        width: 280px;
+        height: 280px;
+        background: radial-gradient(circle, rgba(118, 203, 255, 0.22), transparent 64%);
+        filter: blur(10px);
+      }
+
+      .voice-visual::after {
+        width: 420px;
+        height: 420px;
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.42), transparent 66%);
+        top: -170px;
+        right: -120px;
+      }
+
+      .orb-ring {
+        position: absolute;
+        width: 208px;
+        height: 208px;
+        border-radius: 50%;
+        border: 1px solid rgba(10, 132, 255, 0.16);
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.16), transparent 72%);
+        animation: ringDrift 8.5s ease-in-out infinite;
+      }
+
+      .orb-ring::before {
+        content: "";
+        position: absolute;
+        inset: 14px;
+        border-radius: 50%;
+        border: 1px solid rgba(10, 132, 255, 0.12);
+      }
+
+      .voice-orb {
+        position: relative;
+        width: 136px;
+        height: 136px;
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.52) 14%, transparent 24%),
+          radial-gradient(circle at 50% 32%, #8cdcff 0%, #42b7ff 34%, #0f7ef5 68%, #0b57c3 100%);
+        box-shadow:
+          0 26px 58px rgba(10, 132, 255, 0.26),
+          inset 0 2px 8px rgba(255, 255, 255, 0.72),
+          inset 0 -18px 34px rgba(6, 52, 136, 0.28);
+        animation: orbFloat 6.2s ease-in-out infinite;
+      }
+
+      .voice-orb::before,
+      .voice-orb::after {
+        content: "";
+        position: absolute;
+        border-radius: 50%;
+      }
+
+      .voice-orb::before {
+        inset: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.46);
+      }
+
+      .voice-orb::after {
+        inset: 28px;
+        background: radial-gradient(circle at 40% 36%, rgba(255, 255, 255, 0.42), transparent 70%);
+        opacity: 0.72;
+      }
+
+      .status-callout {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 12px;
+        padding: 18px;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid var(--line);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+      }
+
+      .status-callout::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        margin-top: 7px;
+        border-radius: 50%;
+        background: var(--warning);
+        box-shadow: 0 0 0 6px var(--warning-soft);
+      }
+
+      .status-stack {
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .status-label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .status-text {
+        color: #1a273c;
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 1.45;
+        letter-spacing: -0.014em;
+      }
+
+      .signal-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .signal-card {
+        padding: 16px;
+        border-radius: 22px;
+        background: rgba(250, 252, 255, 0.84);
+        border: 1px solid var(--line);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
+      }
+
+      .signal-card span {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .signal-card strong {
+        display: block;
+        color: var(--muted-strong);
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 1.42;
+        letter-spacing: -0.01em;
+        word-break: break-word;
+      }
+
+      .stage-actions {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+
+      .stage-actions .primary {
+        min-width: 180px;
+      }
+
+      .stage-help {
+        max-width: 30ch;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .result-panel {
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(244, 248, 255, 0.8));
+      }
+
+      .result-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 18px;
+      }
+
+      .result-copy {
+        display: grid;
+        gap: 10px;
+        max-width: 36ch;
+      }
+
+      .mode-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent-strong);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+
+      .mode-pill::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+
+      .result-shell {
+        display: grid;
+        align-items: start;
+        min-height: 470px;
+        padding: 36px;
+        border-radius: 28px;
+        border: 1px solid rgba(120, 145, 188, 0.16);
+        background: linear-gradient(180deg, rgba(252, 253, 255, 0.98), rgba(247, 250, 255, 0.96));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
+      }
+
+      .result-shell pre {
+        margin: 0;
+        max-width: 28ch;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: "SF Pro Text", "Helvetica Neue", "Arial", sans-serif;
+        font-size: clamp(32px, 3.8vw, 46px);
+        line-height: 1.34;
+        letter-spacing: -0.04em;
+        font-weight: 540;
+        color: #1a273c;
+      }
+
+      .result-note {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .settings-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(236, 242, 252, 0.42);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 220ms ease;
+        z-index: 4;
+      }
+
+      .dashboard-shell[data-settings-open="true"] .settings-backdrop {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .settings-drawer {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        bottom: 14px;
+        width: min(400px, calc(100% - 28px));
+        padding: 20px;
+        border-radius: 30px;
+        border: 1px solid var(--line-strong);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(246, 249, 255, 0.82));
+        box-shadow: 0 28px 58px rgba(15, 23, 42, 0.18);
+        backdrop-filter: blur(28px) saturate(1.28);
+        -webkit-backdrop-filter: blur(28px) saturate(1.28);
+        transform: translateX(calc(100% + 24px));
+        opacity: 0;
+        pointer-events: none;
+        transition: transform 240ms ease, opacity 220ms ease;
+        z-index: 5;
+        overflow: auto;
+      }
+
+      .dashboard-shell[data-settings-open="true"] .settings-drawer {
+        transform: translateX(0);
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .settings-stack,
+      .settings-form,
+      .settings-section,
+      .diagnostics-grid,
+      .settings-actions {
+        display: grid;
+        gap: 16px;
+      }
+
+      .settings-topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+      }
+
+      .settings-close {
+        padding: 10px 14px;
+      }
+
+      .settings-section {
+        padding: 20px;
+        border-radius: 24px;
         background: var(--panel-strong);
         border: 1px solid var(--line);
-        border-radius: 18px;
-        padding: 14px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
       }
 
-      .kicker {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: var(--muted);
-        margin-bottom: 6px;
+      .section-header {
+        display: grid;
+        gap: 5px;
       }
 
-      .value {
-        font-size: 14px;
-        line-height: 1.45;
+      .section-header p {
+        max-width: 30ch;
+        font-size: 13px;
       }
 
       .status-strip {
-        padding: 12px 14px;
-        border-radius: 16px;
-        background: var(--warn);
-        color: #7a5a26;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: var(--warning-soft);
+        border: 1px solid rgba(255, 159, 10, 0.16);
+        color: #885700;
         font-size: 14px;
         font-weight: 600;
       }
 
-      .status-strip[data-ready="true"] {
-        background: var(--ok);
-        color: #265638;
+      .status-strip::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--warning);
+        box-shadow: 0 0 0 5px rgba(255, 159, 10, 0.14);
+        flex: none;
       }
 
-      .grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
+      .status-strip[data-ready="true"] {
+        background: var(--success-soft);
+        border-color: rgba(52, 199, 89, 0.16);
+        color: #146c2e;
+      }
+
+      .status-strip[data-ready="true"]::before {
+        background: var(--success);
+        box-shadow: 0 0 0 5px rgba(52, 199, 89, 0.14);
       }
 
       label {
         display: grid;
         gap: 8px;
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--muted);
+        color: var(--muted-strong);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
       }
 
-      input,
-      textarea {
+      input {
         width: 100%;
         border: 1px solid var(--line);
-        border-radius: 16px;
-        padding: 12px 14px;
+        border-radius: 18px;
+        padding: 13px 14px;
         font: inherit;
-        background: white;
+        font-size: 15px;
         color: var(--ink);
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
       }
 
-      pre {
-        margin: 0;
-        min-height: 120px;
-        white-space: pre-wrap;
-        word-break: break-word;
-        background: white;
-        border: 1px solid var(--line);
+      input:focus {
+        outline: none;
+        border-color: rgba(10, 132, 255, 0.32);
+        box-shadow:
+          0 0 0 4px rgba(10, 132, 255, 0.12),
+          inset 0 1px 0 rgba(255, 255, 255, 0.74);
+      }
+
+      .saved-grid,
+      .diagnostics-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .saved-card,
+      .diag-card {
+        padding: 15px;
         border-radius: 18px;
-        padding: 14px;
-        font-family: "SF Mono", "JetBrains Mono", monospace;
-        font-size: 13px;
-        line-height: 1.55;
+        background: var(--panel-soft);
+        border: 1px solid var(--line);
+      }
+
+      .field-label {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .value-pill {
+        color: var(--ink);
+        font-size: 14px;
+        line-height: 1.45;
+        font-weight: 560;
       }
 
       .microcopy {
         font-size: 13px;
+        line-height: 1.55;
       }
 
-      @media (max-width: 560px) {
-        .stats,
-        .grid {
+      .microcopy.alert {
+        color: #8b3b34;
+      }
+
+      .settings-actions {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .settings-actions button {
+        width: 100%;
+      }
+
+      .mono-box {
+        margin: 0;
+        min-height: 120px;
+        padding: 14px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(252, 253, 255, 0.92);
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: "SF Mono", "JetBrains Mono", "Menlo", monospace;
+        font-size: 13px;
+        line-height: 1.58;
+        color: #243249;
+      }
+
+      #appPathValue {
+        min-height: 0;
+        max-height: 132px;
+      }
+
+      .permissions-list {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--muted);
+      }
+
+      .permissions-list li {
+        line-height: 1.56;
+      }
+
+      #dashboardShell[data-mode="listening"] .status-callout::before,
+      #dashboardShell[data-mode="done"] .status-callout::before {
+        background: var(--success);
+        box-shadow: 0 0 0 6px rgba(52, 199, 89, 0.14);
+      }
+
+      #dashboardShell[data-mode="processing"] .status-callout::before,
+      #dashboardShell[data-mode="arming"] .status-callout::before {
+        background: var(--accent);
+        box-shadow: 0 0 0 6px rgba(10, 132, 255, 0.12);
+      }
+
+      #dashboardShell[data-mode="error"] .status-callout::before {
+        background: var(--danger);
+        box-shadow: 0 0 0 6px rgba(255, 69, 58, 0.12);
+      }
+
+      #dashboardShell[data-mode="listening"] .voice-orb {
+        animation-duration: 3.2s;
+        transform: scale(1.04);
+        box-shadow:
+          0 30px 68px rgba(46, 188, 255, 0.3),
+          inset 0 2px 8px rgba(255, 255, 255, 0.74),
+          inset 0 -18px 34px rgba(6, 52, 136, 0.28);
+      }
+
+      #dashboardShell[data-mode="processing"] .orb-ring,
+      #dashboardShell[data-mode="arming"] .orb-ring {
+        animation-duration: 4.2s;
+        border-color: rgba(10, 132, 255, 0.24);
+      }
+
+      #dashboardShell[data-mode="done"] .voice-orb {
+        background:
+          radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.52) 14%, transparent 24%),
+          radial-gradient(circle at 50% 32%, #93f4c2 0%, #3ed98c 36%, #12a95e 70%, #0c7c45 100%);
+        box-shadow:
+          0 30px 70px rgba(28, 186, 106, 0.24),
+          inset 0 2px 8px rgba(255, 255, 255, 0.72),
+          inset 0 -18px 34px rgba(7, 92, 47, 0.22);
+      }
+
+      #dashboardShell[data-mode="error"] .voice-orb {
+        background:
+          radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.52) 14%, transparent 24%),
+          radial-gradient(circle at 50% 32%, #ffb1ac 0%, #ff746c 38%, #ff4d42 70%, #d12d24 100%);
+        box-shadow:
+          0 30px 70px rgba(255, 69, 58, 0.24),
+          inset 0 2px 8px rgba(255, 255, 255, 0.72),
+          inset 0 -18px 34px rgba(131, 25, 18, 0.22);
+      }
+
+      @keyframes orbFloat {
+        0%,
+        100% {
+          transform: translateY(0) scale(1);
+        }
+
+        50% {
+          transform: translateY(-6px) scale(1.015);
+        }
+      }
+
+      @keyframes ringDrift {
+        0%,
+        100% {
+          transform: scale(0.98);
+          opacity: 0.74;
+        }
+
+        50% {
+          transform: scale(1.04);
+          opacity: 1;
+        }
+      }
+
+      @media (max-width: 980px) {
+        main {
+          padding: 18px;
+        }
+
+        .content-grid {
           grid-template-columns: 1fr;
+        }
+
+        .voice-stage,
+        .result-panel {
+          min-height: auto;
+        }
+
+        .voice-visual {
+          min-height: 236px;
+        }
+
+        .result-shell {
+          min-height: 380px;
+        }
+      }
+
+      @media (max-width: 680px) {
+        main {
+          padding: 12px;
+        }
+
+        .main-shell {
+          padding: 16px;
+        }
+
+        .topbar,
+        .result-header {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .toolbar,
+        .settings-actions {
+          grid-template-columns: 1fr;
+          flex-direction: column;
+        }
+
+        .toolbar button,
+        .stage-actions .primary {
+          width: 100%;
+        }
+
+        .signal-grid,
+        .saved-grid,
+        .diagnostics-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .voice-stage,
+        .result-panel {
+          padding: 22px;
+        }
+
+        .voice-visual {
+          min-height: 220px;
+        }
+
+        .result-shell {
+          padding: 24px;
+          min-height: 300px;
+        }
+
+        .result-shell pre {
+          font-size: 24px;
+        }
+
+        .settings-drawer {
+          top: 8px;
+          right: 8px;
+          bottom: 8px;
+          width: calc(100% - 16px);
+          border-radius: 24px;
         }
       }
     </style>
   </head>
   <body>
     <main>
-      <section class="shell">
-        <article class="panel hero">
-          <span class="eyebrow">Voice Flow Dashboard</span>
-          <h1>Quiet by default.</h1>
-          <p>The floating orb stays lightweight. This dashboard is where you connect your API, inspect the last transcript, and manage beta updates.</p>
-          <div class="actions">
-            <button class="primary" id="toggleDictationButton">Start dictation</button>
-            <button class="secondary" id="hideButton">Hide dashboard</button>
-            <button class="secondary" id="openApiButton">Open API</button>
-          </div>
-        </article>
-
-        <article class="panel card">
-          <h2>Connection</h2>
-          <div class="status-strip" id="connectionStatus" data-ready="false">Voice Flow needs an API route and token before dictation can start.</div>
-          <form id="apiConfigForm">
-            <label>
-              API Base URL
-              <input id="apiBaseUrlInput" type="url" placeholder="https://your-api.example.com" autocomplete="off" />
-            </label>
-
-            <label>
-              Voice Flow API Token
-              <input id="apiTokenInput" type="password" placeholder="Paste your service token" autocomplete="off" />
-            </label>
-
-            <div class="grid">
-              <div class="stat">
-                <div class="kicker">Saved Route</div>
-                <div class="value" id="savedRouteValue">Not configured.</div>
+      <section class="dashboard-shell" id="dashboardShell" data-mode="idle" data-settings-open="false">
+        <div class="app-surface">
+          <div class="main-shell">
+            <header class="topbar">
+              <div class="brand">
+                <span class="brand-tag">Voice Flow</span>
+                <h1>Speak, then stay out of the way.</h1>
               </div>
-              <div class="stat">
-                <div class="kicker">Saved Token</div>
-                <div class="value" id="savedTokenValue">Not configured.</div>
+
+              <div class="toolbar">
+                <button class="secondary settings-button" id="settingsToggleButton" type="button">Settings</button>
+                <button class="secondary" id="hideButton" type="button">Hide</button>
               </div>
-            </div>
+            </header>
 
-            <p class="microcopy" id="secureStorageText">Tokens are encrypted with macOS secure storage when available.</p>
-            <p class="microcopy" id="settingsErrorText">No settings errors.</p>
+            <section class="content-grid">
+              <article class="glass-card voice-stage">
+                <div class="stage-copy">
+                  <span class="eyebrow">Voice</span>
+                  <h2>Ready when you are.</h2>
+                  <p>The capture side stays calm, but still shows enough state to trust what is happening.</p>
+                </div>
 
-            <div class="inline-actions">
-              <button class="primary" id="saveConfigButton" type="submit">Save API connection</button>
-              <button class="secondary" id="resetConfigButton" type="button">Reset saved connection</button>
-            </div>
-          </form>
-        </article>
+                <div class="voice-visual" aria-hidden="true">
+                  <div class="orb-ring"></div>
+                  <div class="voice-orb"></div>
+                </div>
 
-        <article class="panel">
-          <div class="stats">
-            <div class="stat">
-              <div class="kicker">Mode</div>
-              <div class="value" id="modeValue">Idle</div>
-            </div>
-            <div class="stat">
-              <div class="kicker">Provider</div>
-              <div class="value" id="providerValue">Unknown</div>
-            </div>
-            <div class="stat">
-              <div class="kicker">Microphone</div>
-              <div class="value" id="micValue">Checking…</div>
-            </div>
-            <div class="stat">
-              <div class="kicker">Trigger</div>
-              <div class="value" id="hotkeyValue">Loading…</div>
-            </div>
+                <div class="status-callout">
+                  <div class="status-stack">
+                    <div class="status-label">Current Status</div>
+                    <div class="status-text" id="statusText">Waiting for the pet.</div>
+                  </div>
+                </div>
+
+                <div class="signal-grid">
+                  <div class="signal-card">
+                    <span>Mode</span>
+                    <strong id="modeValue">Idle</strong>
+                  </div>
+                  <div class="signal-card">
+                    <span>Microphone</span>
+                    <strong id="micValue">Checking…</strong>
+                  </div>
+                  <div class="signal-card">
+                    <span>Trigger</span>
+                    <strong id="hotkeyValue">Loading…</strong>
+                  </div>
+                </div>
+
+                <div class="stage-actions">
+                  <button class="primary" id="toggleDictationButton" type="button">Start dictation</button>
+                  <p class="stage-help">Use the `fn` hold flow or tap start manually when you want to dictate into the current app.</p>
+                </div>
+              </article>
+
+              <article class="glass-card result-panel">
+                <div class="result-header">
+                  <div class="result-copy">
+                    <span class="eyebrow">Converted Text</span>
+                    <h2>Latest result</h2>
+                    <p>The final text stays front and center, while everything technical remains tucked into settings.</p>
+                  </div>
+                  <div class="mode-pill">Paste-ready</div>
+                </div>
+
+                <div class="result-shell">
+                  <pre id="polishedText">No polished output yet.</pre>
+                </div>
+
+                <p class="result-note">This area only holds the most recent converted text, so it always feels clear what will paste next.</p>
+              </article>
+            </section>
           </div>
-        </article>
 
-        <article class="panel card">
-          <h2>Beta Updates</h2>
-          <p id="updateStatusText">Auto-update is only available in packaged beta builds.</p>
-          <div class="inline-actions">
-            <button class="secondary" id="checkUpdatesButton">Check for updates</button>
-            <button class="primary" id="installUpdateButton">Install downloaded update</button>
-          </div>
-        </article>
+          <div class="settings-backdrop" id="settingsBackdrop"></div>
 
-        <article class="panel card">
-          <h2>Permissions</h2>
-          <p>Microphone permission is required for recording. Accessibility permission is required for fn-hold detection and paste-back automation.</p>
-        </article>
+          <aside class="settings-drawer" id="settingsDrawer" aria-hidden="true">
+            <div class="settings-stack">
+              <header class="settings-topbar">
+                <div class="section-header">
+                  <span class="eyebrow">Settings</span>
+                  <h3>Connection and Permissions</h3>
+                  <p>Keep setup and fn diagnostics here so the main view can stay quiet and focused.</p>
+                </div>
+                <button class="secondary settings-close" id="settingsCloseButton" type="button">Close</button>
+              </header>
 
-        <article class="panel card">
-          <h2>Session Status</h2>
-          <p id="statusText">Waiting for the pet.</p>
-        </article>
+              <section class="settings-section">
+                <div class="section-header">
+                  <h3>Connection</h3>
+                  <p>Connect the desktop app to your hosted Voice Flow API.</p>
+                </div>
 
-        <article class="panel card">
-          <h2>Trigger Status</h2>
-          <p id="hotkeyStatusText">Checking trigger status…</p>
-        </article>
+                <div class="status-strip" id="connectionStatus" data-ready="false">
+                  Voice Flow needs an API route and token before dictation can start.
+                </div>
 
-        <article class="panel card">
-          <h2>Raw Transcript</h2>
-          <pre id="rawText">No transcript yet.</pre>
-        </article>
+                <form class="settings-form" id="apiConfigForm">
+                  <label>
+                    API Base URL
+                    <input id="apiBaseUrlInput" type="url" placeholder="https://your-api.example.com" autocomplete="off" />
+                  </label>
 
-        <article class="panel card">
-          <h2>Polished Output</h2>
-          <pre id="polishedText">No polished output yet.</pre>
-        </article>
+                  <label>
+                    Voice Flow API Token
+                    <input id="apiTokenInput" type="password" placeholder="Paste your service token" autocomplete="off" />
+                  </label>
+
+                  <div class="saved-grid">
+                    <div class="saved-card">
+                      <span class="field-label">Saved Route</span>
+                      <div class="value-pill" id="savedRouteValue">Not configured.</div>
+                    </div>
+                    <div class="saved-card">
+                      <span class="field-label">Saved Token</span>
+                      <div class="value-pill" id="savedTokenValue">Not configured.</div>
+                    </div>
+                  </div>
+
+                  <p class="microcopy" id="secureStorageText">Tokens are encrypted with macOS secure storage when available.</p>
+                  <p class="microcopy" id="settingsErrorText">No settings errors.</p>
+
+                  <div class="settings-actions">
+                    <button class="primary" id="saveConfigButton" type="submit">Save API connection</button>
+                    <button class="secondary" id="resetConfigButton" type="button">Reset saved connection</button>
+                  </div>
+                </form>
+              </section>
+
+              <section class="settings-section">
+                <div class="section-header">
+                  <h3>Trigger and Permissions</h3>
+                  <p>Check whether fn is available right now, open Accessibility settings, and refresh the listener after permission changes.</p>
+                </div>
+
+                <div class="diagnostics-grid">
+                  <div class="diag-card">
+                    <span class="field-label">Trigger Mode</span>
+                    <div class="value-pill" id="triggerModeValue">Loading…</div>
+                  </div>
+                  <div class="diag-card">
+                    <span class="field-label">Active Trigger</span>
+                    <div class="value-pill" id="triggerStatusValue">Loading…</div>
+                  </div>
+                  <div class="diag-card">
+                    <span class="field-label">Accessibility</span>
+                    <div class="value-pill" id="accessibilityValue">Loading…</div>
+                  </div>
+                  <div class="diag-card">
+                    <span class="field-label">Fn Listener</span>
+                    <div class="value-pill" id="fnListenerValue">Loading…</div>
+                  </div>
+                </div>
+
+                <p class="microcopy" id="triggerDetailText">Waiting for trigger diagnostics.</p>
+
+                <div class="settings-actions">
+                  <button class="secondary" id="accessibilityActionButton" type="button">Open Accessibility Settings</button>
+                  <button class="secondary" id="refreshTriggerButton" type="button">Refresh fn Diagnostics</button>
+                </div>
+
+                <p class="microcopy" id="restartHint">
+                  If you just changed Accessibility permission, refresh once so Voice Flow can re-check fn immediately.
+                </p>
+              </section>
+
+              <section class="settings-section">
+                <div class="section-header">
+                  <h3>Install Location</h3>
+                  <p>Keeping Voice Flow in Applications makes macOS Accessibility permission much more stable across relaunches and rebuilds.</p>
+                </div>
+
+                <div class="saved-card">
+                  <span class="field-label">Current App Path</span>
+                  <pre class="mono-box" id="appPathValue">Loading…</pre>
+                </div>
+
+                <p class="microcopy" id="appPathHint">Checking whether this install path is stable enough for fn permissions.</p>
+
+                <div class="settings-actions">
+                  <button class="secondary" id="moveToApplicationsButton" type="button">Move to Applications</button>
+                </div>
+              </section>
+
+            </div>
+          </aside>
+        </div>
       </section>
     </main>
 

@@ -2,29 +2,40 @@ const flowApi = window.flow;
 const apiBaseUrlInput = document.getElementById("apiBaseUrlInput");
 const apiConfigForm = document.getElementById("apiConfigForm");
 const apiTokenInput = document.getElementById("apiTokenInput");
-const checkUpdatesButton = document.getElementById("checkUpdatesButton");
+const appPathValueEl = document.getElementById("appPathValue");
+const appPathHintEl = document.getElementById("appPathHint");
+const accessibilityActionButton = document.getElementById("accessibilityActionButton");
+const accessibilityValueEl = document.getElementById("accessibilityValue");
 const connectionStatusEl = document.getElementById("connectionStatus");
+const dashboardShellEl = document.getElementById("dashboardShell");
+const fnListenerValueEl = document.getElementById("fnListenerValue");
 const hideButton = document.getElementById("hideButton");
-const hotkeyStatusTextEl = document.getElementById("hotkeyStatusText");
 const hotkeyValueEl = document.getElementById("hotkeyValue");
-const installUpdateButton = document.getElementById("installUpdateButton");
 const micValueEl = document.getElementById("micValue");
 const modeValueEl = document.getElementById("modeValue");
-const openApiButton = document.getElementById("openApiButton");
+const moveToApplicationsButton = document.getElementById("moveToApplicationsButton");
 const polishedTextEl = document.getElementById("polishedText");
-const providerValueEl = document.getElementById("providerValue");
-const rawTextEl = document.getElementById("rawText");
+const refreshTriggerButton = document.getElementById("refreshTriggerButton");
 const resetConfigButton = document.getElementById("resetConfigButton");
+const restartHintEl = document.getElementById("restartHint");
 const savedRouteValueEl = document.getElementById("savedRouteValue");
 const savedTokenValueEl = document.getElementById("savedTokenValue");
 const secureStorageTextEl = document.getElementById("secureStorageText");
+const settingsBackdropEl = document.getElementById("settingsBackdrop");
+const settingsCloseButton = document.getElementById("settingsCloseButton");
 const settingsErrorTextEl = document.getElementById("settingsErrorText");
+const settingsDrawerEl = document.getElementById("settingsDrawer");
+const settingsToggleButton = document.getElementById("settingsToggleButton");
 const statusTextEl = document.getElementById("statusText");
 const toggleDictationButton = document.getElementById("toggleDictationButton");
-const updateStatusTextEl = document.getElementById("updateStatusText");
+const triggerDetailTextEl = document.getElementById("triggerDetailText");
+const triggerModeValueEl = document.getElementById("triggerModeValue");
+const triggerStatusValueEl = document.getElementById("triggerStatusValue");
 
 let settings = null;
 let uiState = null;
+let settingsDrawerOpen = false;
+let diagnosticsPollTimer = null;
 
 function formatMode(mode) {
   if (!mode) {
@@ -42,6 +53,57 @@ function formatHotkey(value) {
   return value.replace("CommandOrControl", navigator.platform.includes("Mac") ? "Cmd" : "Ctrl").replaceAll("Alt", "Opt");
 }
 
+function setSettingsDrawerOpen(nextOpen) {
+  settingsDrawerOpen = Boolean(nextOpen);
+
+  if (dashboardShellEl) {
+    dashboardShellEl.dataset.settingsOpen = String(settingsDrawerOpen);
+  }
+
+  if (settingsDrawerEl) {
+    settingsDrawerEl.setAttribute("aria-hidden", String(!settingsDrawerOpen));
+  }
+
+  if (settingsDrawerOpen) {
+    startDiagnosticsPolling();
+    return;
+  }
+
+  stopDiagnosticsPolling();
+}
+
+function openSettingsDrawer() {
+  setSettingsDrawerOpen(true);
+  void refreshTriggerDiagnostics({ restartListener: false }).catch(() => {});
+}
+
+function closeSettingsDrawer() {
+  setSettingsDrawerOpen(false);
+}
+
+function startDiagnosticsPolling() {
+  if (!flowApi || diagnosticsPollTimer) {
+    return;
+  }
+
+  diagnosticsPollTimer = setInterval(() => {
+    if (!settingsDrawerOpen) {
+      return;
+    }
+
+    void refreshTriggerDiagnostics({ restartListener: false }).catch(() => {});
+  }, 2500);
+}
+
+function stopDiagnosticsPolling() {
+  if (!diagnosticsPollTimer) {
+    return;
+  }
+
+  clearInterval(diagnosticsPollTimer);
+  diagnosticsPollTimer = null;
+}
+
 function updateConnectionPanel() {
   const configured = Boolean(settings?.apiConfigured);
   connectionStatusEl.dataset.ready = String(configured);
@@ -53,6 +115,7 @@ function updateConnectionPanel() {
   savedTokenValueEl.textContent = settings?.hasApiToken ? settings.apiTokenMasked || "Stored securely." : "Not configured.";
   secureStorageTextEl.textContent = settings?.secureStorageMessage || "Tokens are encrypted with macOS secure storage when available.";
   settingsErrorTextEl.textContent = settings?.settingsError || "No settings errors.";
+  settingsErrorTextEl.classList.toggle("alert", Boolean(settings?.settingsError));
 
   if (settings) {
     apiBaseUrlInput.placeholder = settings.isPackaged ? "https://your-api.example.com" : "http://127.0.0.1:8000";
@@ -60,6 +123,61 @@ function updateConnectionPanel() {
       ? `Stored securely as ${settings.apiTokenMasked || "saved token"}`
       : "Paste your service token";
   }
+}
+
+function formatAccessibilityState(value) {
+  if (value === true) {
+    return "Granted";
+  }
+
+  if (value === false) {
+    return "Not granted";
+  }
+
+  return "Unavailable";
+}
+
+function formatTriggerModeValue(mode) {
+  if (mode === "fn_hold") {
+    return "Fn hold";
+  }
+
+  if (mode === "hotkey") {
+    return "Hotkey fallback";
+  }
+
+  return "Unknown";
+}
+
+function updateTriggerDiagnosticsPanel() {
+  const diagnostics = settings?.triggerDiagnostics || {};
+  const packaged = Boolean(settings?.isPackaged);
+  const stableInstall = Boolean(diagnostics.inApplicationsFolder);
+  const canMove = Boolean(diagnostics.canMoveToApplications);
+
+  triggerModeValueEl.textContent = formatTriggerModeValue(diagnostics.effectiveTriggerMode);
+  triggerStatusValueEl.textContent = diagnostics.effectiveTriggerLabel || settings?.triggerLabel || "Unknown";
+  accessibilityValueEl.textContent = formatAccessibilityState(diagnostics.accessibilityTrusted);
+  fnListenerValueEl.textContent = diagnostics.fnListenerRunning ? "Running" : "Stopped";
+
+  appPathValueEl.textContent = diagnostics.packagedBundlePath || "Development build";
+  appPathHintEl.textContent = packaged
+    ? stableInstall
+      ? "Installed in Applications. macOS permissions are much less likely to break."
+      : "This build is outside Applications. Moving it makes fn permission more stable across rebuilds and relaunches."
+    : "Development builds move around often, so fn permission is less stable than an installed packaged app.";
+
+  restartHintEl.textContent = stableInstall
+    ? "If you just changed Accessibility permission, use refresh once so Voice Flow can re-check fn immediately."
+    : "Install this packaged build in Applications first, then re-enable Accessibility if fn keeps falling back.";
+
+  triggerDetailTextEl.textContent = uiState?.hotkeyStatus || "Waiting for trigger diagnostics.";
+  triggerDetailTextEl.classList.toggle("alert", Boolean(diagnostics.usingFallbackHotkey));
+
+  accessibilityActionButton.disabled = !flowApi || !navigator.platform.includes("Mac");
+  refreshTriggerButton.disabled = !flowApi || !navigator.platform.includes("Mac");
+  moveToApplicationsButton.disabled = !flowApi || !canMove;
+  moveToApplicationsButton.textContent = stableInstall ? "Already in Applications" : "Move to Applications";
 }
 
 function updateButtons() {
@@ -70,41 +188,19 @@ function updateButtons() {
   toggleDictationButton.disabled = !flowApi || processing || !configured;
   toggleDictationButton.textContent = recording ? "Stop dictation" : configured ? "Start dictation" : "Connect API first";
   hideButton.disabled = !flowApi;
-  openApiButton.disabled = !flowApi || !settings?.apiBaseUrl;
-  checkUpdatesButton.disabled = !flowApi || !settings?.canCheckForUpdates;
-  installUpdateButton.disabled = !flowApi || settings?.updateStatus !== "downloaded";
 }
 
 function applyState(nextState) {
   uiState = nextState;
+  if (dashboardShellEl) {
+    dashboardShellEl.dataset.mode = nextState.mode || "idle";
+  }
   modeValueEl.textContent = formatMode(nextState.mode);
-  providerValueEl.textContent = nextState.provider || settings?.transcribeProvider || "Unknown";
   micValueEl.textContent = nextState.micStatus || "Unknown";
   statusTextEl.textContent = nextState.status || "Waiting for the pet.";
-  hotkeyStatusTextEl.textContent = nextState.hotkeyStatus || "Trigger status is unavailable.";
-  rawTextEl.textContent = nextState.rawTranscript || "No transcript yet.";
   polishedTextEl.textContent = nextState.polishedText || "No polished output yet.";
+  updateTriggerDiagnosticsPanel();
   updateButtons();
-}
-
-function formatUpdateStatus() {
-  if (!settings) {
-    return "Update status unavailable.";
-  }
-
-  if (settings.updateStatus === "downloaded") {
-    return settings.updateMessage || "A new beta build is ready to install.";
-  }
-
-  if (settings.updateStatus === "disabled") {
-    return settings.updateMessage || "Auto-update is only available in packaged beta builds.";
-  }
-
-  if (settings.updateStatus === "downloading" && Number.isFinite(settings.updateProgress)) {
-    return `${settings.updateMessage} (${settings.updateProgress}%)`;
-  }
-
-  return settings.updateMessage || "Waiting to check for updates.";
 }
 
 function applySettings(nextSettings, { preserveDraft = false } = {}) {
@@ -116,32 +212,43 @@ function applySettings(nextSettings, { preserveDraft = false } = {}) {
   }
 
   hotkeyValueEl.textContent = nextSettings.triggerLabel || formatHotkey(nextSettings.hotkey);
-  updateStatusTextEl.textContent = formatUpdateStatus();
   updateConnectionPanel();
+  updateTriggerDiagnosticsPanel();
   updateButtons();
+
+  if (!nextSettings.apiConfigured) {
+    openSettingsDrawer();
+  }
 }
 
 function setPreviewMode() {
   modeValueEl.textContent = "Preview";
-  providerValueEl.textContent = "Unavailable";
   micValueEl.textContent = "Unavailable";
   hotkeyValueEl.textContent = "Unavailable";
   statusTextEl.textContent = "This dashboard renderer was opened directly in a browser tab. Launch the Electron desktop app instead.";
-  hotkeyStatusTextEl.textContent = "Trigger diagnostics are only available inside the Electron dashboard.";
-  rawTextEl.textContent = "Dashboard data comes from Electron IPC state.";
   polishedTextEl.textContent = "Start the desktop app with `npm run dev:desktop`.";
   connectionStatusEl.textContent = "Preview mode cannot save API settings.";
   secureStorageTextEl.textContent = "Secure token storage is only available inside the Electron app.";
   settingsErrorTextEl.textContent = "Electron IPC is unavailable in preview mode.";
-  updateStatusTextEl.textContent = "Auto-update is unavailable in preview mode.";
+  triggerModeValueEl.textContent = "Preview";
+  triggerStatusValueEl.textContent = "Unavailable";
+  accessibilityValueEl.textContent = "Unavailable";
+  fnListenerValueEl.textContent = "Unavailable";
+  appPathValueEl.textContent = "Unavailable";
+  appPathHintEl.textContent = "Install and launch the packaged app to test fn permissions.";
+  restartHintEl.textContent = "Diagnostics actions are only available inside the Electron app.";
+  triggerDetailTextEl.textContent = "Electron IPC is unavailable in preview mode.";
   toggleDictationButton.disabled = true;
   hideButton.disabled = true;
-  openApiButton.disabled = true;
-  checkUpdatesButton.disabled = true;
-  installUpdateButton.disabled = true;
+  settingsToggleButton.disabled = true;
+  settingsCloseButton.disabled = true;
+  accessibilityActionButton.disabled = true;
+  moveToApplicationsButton.disabled = true;
+  refreshTriggerButton.disabled = true;
   resetConfigButton.disabled = true;
   apiBaseUrlInput.disabled = true;
   apiTokenInput.disabled = true;
+  openSettingsDrawer();
 }
 
 async function saveApiConfig(event) {
@@ -160,11 +267,32 @@ async function resetApiConfig() {
   const snapshot = await flowApi.resetApiConfig();
   apiTokenInput.value = "";
   applySettings(snapshot);
+  openSettingsDrawer();
 }
 
 async function checkForUpdates() {
   const snapshot = await flowApi.checkForUpdates();
   applySettings(snapshot, { preserveDraft: true });
+}
+
+async function refreshTriggerDiagnostics(options = {}) {
+  const snapshot = await flowApi.refreshTriggerDiagnostics(options);
+  applySettings(snapshot, {
+    preserveDraft: document.activeElement === apiBaseUrlInput || document.activeElement === apiTokenInput
+  });
+}
+
+async function openAccessibilitySettings() {
+  await flowApi.openAccessibilitySettings();
+  await refreshTriggerDiagnostics({
+    restartListener: false
+  });
+}
+
+async function moveToApplications() {
+  moveToApplicationsButton.disabled = true;
+  moveToApplicationsButton.textContent = "Moving…";
+  await flowApi.moveToApplications();
 }
 
 async function installUpdate() {
@@ -197,21 +325,34 @@ async function init() {
     void flowApi.hideDashboard();
   });
 
-  openApiButton.addEventListener("click", () => {
-    if (settings?.apiBaseUrl) {
-      void flowApi.openExternalUrl(settings.apiBaseUrl);
-    }
+  settingsToggleButton.addEventListener("click", () => {
+    setSettingsDrawerOpen(!settingsDrawerOpen);
   });
 
-  checkUpdatesButton.addEventListener("click", () => {
-    void checkForUpdates().catch((error) => {
-      updateStatusTextEl.textContent = error instanceof Error ? error.message : "Update check failed.";
+  settingsCloseButton.addEventListener("click", () => {
+    closeSettingsDrawer();
+  });
+
+  settingsBackdropEl.addEventListener("click", () => {
+    closeSettingsDrawer();
+  });
+
+  accessibilityActionButton.addEventListener("click", () => {
+    void openAccessibilitySettings().catch((error) => {
+      settingsErrorTextEl.textContent = error instanceof Error ? error.message : "Opening Accessibility settings failed.";
     });
   });
 
-  installUpdateButton.addEventListener("click", () => {
-    void installUpdate().catch((error) => {
-      updateStatusTextEl.textContent = error instanceof Error ? error.message : "Update install failed.";
+  refreshTriggerButton.addEventListener("click", () => {
+    void refreshTriggerDiagnostics({ restartListener: true }).catch((error) => {
+      settingsErrorTextEl.textContent = error instanceof Error ? error.message : "Refreshing fn diagnostics failed.";
+    });
+  });
+
+  moveToApplicationsButton.addEventListener("click", () => {
+    void moveToApplications().catch((error) => {
+      settingsErrorTextEl.textContent = error instanceof Error ? error.message : "Moving Voice Flow to Applications failed.";
+      updateTriggerDiagnosticsPanel();
     });
   });
 
@@ -224,6 +365,14 @@ async function init() {
   flowApi.onUiState((state) => {
     applyState(state);
   });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && settingsDrawerOpen) {
+      closeSettingsDrawer();
+    }
+  });
+
+  startDiagnosticsPolling();
 
   applySettings(await flowApi.getSettings());
   applyState(await flowApi.getUiState());

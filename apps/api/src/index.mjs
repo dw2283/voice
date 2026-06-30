@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import http from "node:http";
+import { performance } from "node:perf_hooks";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createProvider } from "./providers/index.mjs";
@@ -15,6 +16,22 @@ const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, "../public");
 const runtimeLogFilePath = path.resolve(__dirname, "../../../.cache/api.log");
 const maxRequestBodyBytes = 20 * 1024 * 1024;
+
+function roundTimingMs(value) {
+  return Number(value.toFixed(1));
+}
+
+function createTraceId() {
+  return `vf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function logTiming(event, payload) {
+  console.info(`Voice Flow timing ${JSON.stringify({
+    event,
+    scope: "api-server",
+    ...payload
+  })}`);
+}
 
 installRuntimeGuards({
   logFilePath: runtimeLogFilePath
@@ -139,6 +156,8 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === "POST" && url.pathname === "/v1/dictate") {
+      const requestStartedAt = performance.now();
+
       if (isApiAuthEnabled() && !isAuthorizedBearerToken(request.headers.authorization)) {
         writeJson(response, 401, {
           error: "Missing or invalid Voice Flow API token."
@@ -147,7 +166,9 @@ const server = http.createServer(async (request, response) => {
       }
 
       const body = await readJsonBody(request);
+      const bodyReadMs = performance.now() - requestStartedAt;
       let dictationRequest;
+      const validationStartedAt = performance.now();
 
       try {
         dictationRequest = assertDictationRequest(body);
@@ -155,7 +176,25 @@ const server = http.createServer(async (request, response) => {
         throw wrapDictationRequestError(error);
       }
 
+      dictationRequest = {
+        ...dictationRequest,
+        traceId: dictationRequest.traceId || createTraceId()
+      };
+
+      const validateMs = performance.now() - validationStartedAt;
+      const providerStartedAt = performance.now();
       const result = await provider.transcribeAndPolish(dictationRequest);
+      const providerMs = performance.now() - providerStartedAt;
+      const totalMs = performance.now() - requestStartedAt;
+
+      logTiming("dictate.completed", {
+        bodyReadMs: roundTimingMs(bodyReadMs),
+        provider: provider.name,
+        providerMs: roundTimingMs(providerMs),
+        totalMs: roundTimingMs(totalMs),
+        traceId: dictationRequest.traceId,
+        validateMs: roundTimingMs(validateMs)
+      });
 
       writeJson(response, 200, {
         ok: true,

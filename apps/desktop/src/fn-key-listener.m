@@ -87,7 +87,7 @@ int main(void) {
     signal(SIGTERM, handleTerminationSignal);
     signal(SIGINT, handleTerminationSignal);
 
-    publishStatus(YES);
+    publishStatus(NO);
 
     gEventTap = CGEventTapCreate(
       kCGSessionEventTap,

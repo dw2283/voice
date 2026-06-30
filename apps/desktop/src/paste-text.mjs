@@ -33,7 +33,18 @@ export async function pasteText(text) {
   } catch (error) {
     throw new Error(formatAutomationError(error));
   } finally {
-    await delay(pasteRestoreDelayMs);
-    clipboard.writeText(previousClipboard);
+    // Restore the prior clipboard value in the background so paste-back does not
+    // keep the main dictation flow waiting for the restore delay.
+    void delay(pasteRestoreDelayMs)
+      .then(() => {
+        if (clipboard.readText() === text) {
+          clipboard.writeText(previousClipboard);
+        }
+      })
+      .catch(() => {});
   }
+
+  return {
+    clipboardRestoreDeferredMs: pasteRestoreDelayMs
+  };
 }

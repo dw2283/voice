@@ -374,6 +374,7 @@ async function stopRecording({ reason = "manual" } = {}) {
     return;
   }
 
+  const stopStartedAt = performance.now();
   isRecording = false;
   stopVoiceMeter();
   await publishState({
@@ -388,6 +389,7 @@ async function stopRecording({ reason = "manual" } = {}) {
     };
     mediaRecorder.stop();
   });
+  const blobReadyAt = performance.now();
 
   try {
     if (reason === "initial-silence") {
@@ -406,13 +408,26 @@ async function stopRecording({ reason = "manual" } = {}) {
       );
     }
 
+    const traceId = `vf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const audioBase64 = await blobToBase64(blob);
+    const base64ReadyAt = performance.now();
     const context = await flowApi.getContext();
+    const contextReadyAt = performance.now();
+
     await flowApi.processDictation({
       audioBase64,
+      clientTimings: {
+        audioBytes: blob.size,
+        blobToBase64Ms: base64ReadyAt - blobReadyAt,
+        getContextMs: contextReadyAt - base64ReadyAt,
+        preApiMs: contextReadyAt - stopStartedAt,
+        recordingMs: Date.now() - recordingStartedAt,
+        stopToBlobMs: blobReadyAt - stopStartedAt
+      },
       mimeType: blob.type || "audio/webm",
       context,
-      finalOnly: true
+      finalOnly: true,
+      traceId
     });
   } finally {
     holdToTalkSession = false;
