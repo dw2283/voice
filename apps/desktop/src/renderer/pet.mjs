@@ -78,6 +78,10 @@ function getModeCopy(state) {
     state.rawTranscript && state.rawTranscript !== "No transcript yet." && state.rawTranscript !== "Listening..."
       ? compactText(state.rawTranscript)
       : "";
+  const polishedPreview =
+    state.polishedText && state.polishedText !== "No polished output yet."
+      ? compactText(state.polishedText)
+      : "";
 
   if (state.mode === "listening") {
     return {
@@ -95,8 +99,8 @@ function getModeCopy(state) {
 
   if (state.mode === "processing") {
     return {
-      detail: "Cleaning up your words.",
-      title: "Polishing"
+      detail: polishedPreview || transcriptPreview || compactText(state.status, 34) || "Cleaning up your words.",
+      title: polishedPreview ? "Polishing" : transcriptPreview ? "Transcript" : "Working"
     };
   }
 

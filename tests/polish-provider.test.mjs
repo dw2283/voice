@@ -158,3 +158,58 @@ test("openai provider does not fall back to local whisper when cloud transcripti
     global.fetch = originalFetch;
   }
 });
+
+test("openai provider streams polish deltas when requested", async () => {
+  const originalFetch = global.fetch;
+  const emittedEvents = [];
+
+  global.fetch = async () => {
+    const encoder = new TextEncoder();
+
+    return {
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode('data: {"type":"response.output_text.delta","delta":"Hello"}\n\n')
+          );
+          controller.enqueue(
+            encoder.encode('data: {"type":"response.output_text.delta","delta":", world."}\n\n')
+          );
+          controller.enqueue(
+            encoder.encode('data: {"type":"response.completed","response":{"output_text":"Hello, world."}}\n\n')
+          );
+          controller.close();
+        }
+      }),
+      ok: true
+    };
+  };
+
+  try {
+    await withTemporaryEnv(
+      {
+        FLOW_POLISH_ENABLED: "true",
+        FLOW_POLISH_MODEL: "gpt-4.1-mini",
+        FLOW_TRANSCRIBE_MODEL: "",
+        OPENAI_API_KEY: "test-key"
+      },
+      async () => {
+        const provider = createOpenAIProvider();
+        const result = await provider.transcribeAndPolishStream(buildRequest("hello world"), {
+          onEvent(event) {
+            emittedEvents.push(event);
+          }
+        });
+
+        assert.equal(result.polishedText, "Hello, world.");
+        assert.equal(result.modelInfo.polish, "gpt-4.1-mini");
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  assert.ok(emittedEvents.some((event) => event.type === "transcribe.completed" && event.rawTranscript === "hello world"));
+  assert.ok(emittedEvents.some((event) => event.type === "polish.delta" && event.delta === "Hello"));
+  assert.ok(emittedEvents.some((event) => event.type === "polish.completed" && event.polishedText === "Hello, world."));
+});

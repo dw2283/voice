@@ -735,20 +735,151 @@ async function callDictationApi(payload) {
   }
 
   if (!response.ok) {
-    const errorText = await response.text();
-    let message = errorText;
-
-    try {
-      message = JSON.parse(errorText).error || errorText;
-    } catch {
-      // The API normally returns JSON errors, but keep plain text readable too.
-    }
-
-    throw new Error(message || `Dictation API error: ${response.status}`);
+    throw new Error(await extractApiErrorMessage(response));
   }
 
   const json = await response.json();
   return json.result;
+}
+
+async function extractApiErrorMessage(response) {
+  const errorText = await response.text();
+  let message = errorText;
+
+  try {
+    message = JSON.parse(errorText).error || errorText;
+  } catch {
+    // The API normally returns JSON errors, but keep plain text readable too.
+  }
+
+  return message || `Dictation API error: ${response.status}`;
+}
+
+function parseSseEventBlock(block) {
+  const trimmed = block.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const dataLines = [];
+
+  for (const line of trimmed.split("\n")) {
+    if (!line || line.startsWith(":")) {
+      continue;
+    }
+
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice("data:".length).trimStart());
+    }
+  }
+
+  if (dataLines.length === 0) {
+    return null;
+  }
+
+  const rawData = dataLines.join("\n");
+
+  if (rawData === "[DONE]") {
+    return null;
+  }
+
+  return JSON.parse(rawData);
+}
+
+async function consumeSseStream(stream, onEvent) {
+  if (!stream) {
+    throw new Error("Streaming response body was empty.");
+  }
+
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), {
+      stream: !done
+    });
+    buffer = buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+    let separatorIndex = buffer.indexOf("\n\n");
+
+    while (separatorIndex !== -1) {
+      const block = buffer.slice(0, separatorIndex);
+      buffer = buffer.slice(separatorIndex + 2);
+      const payload = parseSseEventBlock(block);
+
+      if (payload) {
+        await onEvent(payload);
+      }
+
+      separatorIndex = buffer.indexOf("\n\n");
+    }
+
+    if (done) {
+      break;
+    }
+  }
+
+  const trailing = parseSseEventBlock(buffer);
+
+  if (trailing) {
+    await onEvent(trailing);
+  }
+}
+
+async function callDictationApiStream(payload, { onEvent } = {}) {
+  const { apiBaseUrl, apiToken } = desktopConfigStore.getApiCredentials();
+  let response;
+
+  try {
+    response = await fetch(`${apiBaseUrl}/v1/dictate/stream`, {
+      body: JSON.stringify(payload),
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    });
+  } catch (error) {
+    const message = error instanceof Error && error.message ? error.message : "Unknown network error.";
+    throw new Error(`Could not reach the Voice Flow API at ${apiBaseUrl}. Make sure the backend is running and the API Base URL is correct. (${message})`);
+  }
+
+  if (!response.ok) {
+    if (response.status === 404 || response.status === 405) {
+      return callDictationApi(payload);
+    }
+
+    throw new Error(await extractApiErrorMessage(response));
+  }
+
+  let finalResult = null;
+  let streamedError = "";
+
+  await consumeSseStream(response.body, async (event) => {
+    await onEvent?.(event);
+
+    if (event.type === "dictation.completed" && event.result) {
+      finalResult = event.result;
+      return;
+    }
+
+    if (event.type === "dictation.error") {
+      streamedError = event.error || "Voice Flow streaming request failed.";
+    }
+  });
+
+  if (streamedError) {
+    throw new Error(streamedError);
+  }
+
+  if (!finalResult) {
+    throw new Error("Voice Flow API stream ended before returning a final result.");
+  }
+
+  return finalResult;
 }
 
 function sendDictationAction(payload) {
@@ -1424,6 +1555,11 @@ ipcMain.handle("flow:process-dictation", async (_event, payload) => {
   const startedAt = performance.now();
   const traceId = typeof payload?.traceId === "string" && payload.traceId.trim() ? payload.traceId.trim() : createTraceId();
   const clientTimings = normalizeClientTimings(payload?.clientTimings);
+  const streamState = {
+    polishedText: "",
+    provider: "unknown",
+    rawTranscript: ""
+  };
   const requestPayload = {
     ...payload,
     traceId
@@ -1433,7 +1569,84 @@ ipcMain.handle("flow:process-dictation", async (_event, payload) => {
 
   try {
     const apiStartedAt = performance.now();
-    const result = await callDictationApi(requestPayload);
+    const result = await callDictationApiStream(requestPayload, {
+      onEvent: async (event) => {
+        if (!event || typeof event !== "object") {
+          return;
+        }
+
+        if (typeof event.provider === "string" && event.provider.trim()) {
+          streamState.provider = event.provider;
+        }
+
+        if (typeof event.rawTranscript === "string" && event.rawTranscript.trim()) {
+          streamState.rawTranscript = event.rawTranscript;
+        }
+
+        if (typeof event.polishedText === "string" && event.polishedText.trim()) {
+          streamState.polishedText = event.polishedText;
+        }
+
+        if (event.type === "dictation.started") {
+          broadcastUiState({
+            isRecording: false,
+            mode: "processing",
+            provider: streamState.provider,
+            status: "Uploading your audio..."
+          });
+          return;
+        }
+
+        if (event.type === "transcribe.started") {
+          broadcastUiState({
+            isRecording: false,
+            mode: "processing",
+            provider: streamState.provider,
+            status: "Transcribing your speech..."
+          });
+          return;
+        }
+
+        if (event.type === "transcribe.completed") {
+          const previewText = streamState.rawTranscript || "Transcript ready.";
+
+          broadcastUiState({
+            isRecording: false,
+            mode: "processing",
+            polishedText: previewText,
+            provider: streamState.provider,
+            rawTranscript: streamState.rawTranscript || uiState.rawTranscript,
+            status: "Transcript ready. Refining your words..."
+          });
+          return;
+        }
+
+        if (event.type === "polish.started") {
+          broadcastUiState({
+            isRecording: false,
+            mode: "processing",
+            polishedText: streamState.polishedText || streamState.rawTranscript || uiState.polishedText,
+            provider: streamState.provider,
+            rawTranscript: streamState.rawTranscript || uiState.rawTranscript,
+            status: "Polishing your words..."
+          });
+          return;
+        }
+
+        if (event.type === "polish.delta" || event.type === "polish.completed" || event.type === "polish.disabled") {
+          const nextPolishedText = streamState.polishedText || streamState.rawTranscript || uiState.polishedText;
+
+          broadcastUiState({
+            isRecording: false,
+            mode: "processing",
+            polishedText: nextPolishedText,
+            provider: streamState.provider,
+            rawTranscript: streamState.rawTranscript || uiState.rawTranscript,
+            status: event.type === "polish.completed" || event.type === "polish.disabled" ? "Finishing up..." : "Polishing your words..."
+          });
+        }
+      }
+    });
     const apiMs = performance.now() - apiStartedAt;
     const textToPaste = result.polishedText || result.rawTranscript || "";
     let pasteError = "";

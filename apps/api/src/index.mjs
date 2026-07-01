@@ -17,6 +17,14 @@ const publicDir = path.join(__dirname, "../public");
 const runtimeLogFilePath = path.resolve(__dirname, "../../../.cache/api.log");
 const maxRequestBodyBytes = 20 * 1024 * 1024;
 
+function getCorsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
+  };
+}
+
 function roundTimingMs(value) {
   return Number(value.toFixed(1));
 }
@@ -46,11 +54,7 @@ if (typeof provider.warmup === "function") {
 }
 
 function writeJson(response, statusCode, payload) {
-  const headers = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
-  };
+  const headers = getCorsHeaders();
 
   if (statusCode === 204) {
     response.writeHead(statusCode, headers);
@@ -63,6 +67,22 @@ function writeJson(response, statusCode, payload) {
     "Content-Type": "application/json; charset=utf-8"
   });
   response.end(JSON.stringify(payload, null, 2));
+}
+
+function writeSseHeaders(response) {
+  response.writeHead(200, {
+    ...getCorsHeaders(),
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "X-Accel-Buffering": "no"
+  });
+  response.flushHeaders?.();
+}
+
+function writeSseEvent(response, payload, eventName = "message") {
+  response.write(`event: ${eventName}\n`);
+  response.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
 async function writeStatic(response, filePath, contentType) {
@@ -157,8 +177,9 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    if (request.method === "POST" && url.pathname === "/v1/dictate") {
+    if (request.method === "POST" && (url.pathname === "/v1/dictate" || url.pathname === "/v1/dictate/stream")) {
       const requestStartedAt = performance.now();
+      const shouldStream = url.pathname === "/v1/dictate/stream";
 
       if (isApiAuthEnabled() && !isAuthorizedBearerToken(request.headers.authorization)) {
         writeJson(response, 401, {
@@ -186,7 +207,23 @@ const server = http.createServer(async (request, response) => {
 
       const validateMs = performance.now() - validationStartedAt;
       const providerStartedAt = performance.now();
-      const result = await provider.transcribeAndPolish(dictationRequest);
+      let result;
+
+      if (shouldStream) {
+        writeSseHeaders(response);
+        const runStream = typeof provider.transcribeAndPolishStream === "function"
+          ? provider.transcribeAndPolishStream.bind(provider)
+          : provider.transcribeAndPolish.bind(provider);
+
+        result = await runStream(dictationRequest, {
+          onEvent: async (event) => {
+            writeSseEvent(response, event);
+          }
+        });
+      } else {
+        result = await provider.transcribeAndPolish(dictationRequest);
+      }
+
       const providerMs = performance.now() - providerStartedAt;
       const totalMs = performance.now() - requestStartedAt;
 
@@ -199,10 +236,19 @@ const server = http.createServer(async (request, response) => {
         validateMs: roundTimingMs(validateMs)
       });
 
-      writeJson(response, 200, {
-        ok: true,
-        result
-      });
+      if (shouldStream) {
+        writeSseEvent(response, {
+          ok: true,
+          result,
+          type: "dictation.completed"
+        });
+        response.end();
+      } else {
+        writeJson(response, 200, {
+          ok: true,
+          result
+        });
+      }
       return;
     }
 
@@ -218,6 +264,18 @@ const server = http.createServer(async (request, response) => {
       traceId,
       url: request.url ?? ""
     });
+
+    if (response.headersSent && !response.writableEnded) {
+      writeSseEvent(response, {
+        error: payload.error,
+        statusCode,
+        traceId,
+        type: "dictation.error"
+      });
+      response.end();
+      return;
+    }
+
     writeJson(response, statusCode, payload);
   }
 });
