@@ -8,6 +8,7 @@ import {
   buildVoiceEnv,
   cacheDir,
   ensureRuntimeDirs,
+  getHoldKey,
   getTriggerLabel,
   getTriggerMode,
   readEnvFile,
@@ -22,11 +23,14 @@ const waitForEnter = process.argv.includes("--wait-for-enter");
 const resultPath = path.join(cacheDir, "manual-check-result.json");
 const timeoutMs = 90000;
 const voiceEnv = buildVoiceEnv(await readEnvFile());
+const holdKey = getHoldKey(voiceEnv);
 const triggerMode = getTriggerMode(voiceEnv);
 const hotkeyLabel = getTriggerLabel({
+  holdKey,
   hotkey: voiceEnv.FLOW_HOTKEY,
   triggerMode
 });
+const holdKeyInstruction = holdKey === "fn" ? "fn" : hotkeyLabel.replace(" (hold)", "").toLowerCase();
 
 let documentOpen = false;
 let resultWritten = false;
@@ -176,12 +180,16 @@ async function main() {
   console.log("");
   console.log("1. Keep the new blank TextEdit document focused.");
   if (triggerMode === "fn_hold") {
-    console.log(`2. Hold ${hotkeyLabel} while you speak, then release it to stop.`);
+    console.log(`2. Hold ${holdKeyInstruction} while you speak, then release it to stop.`);
   } else {
     console.log(`2. Press ${hotkeyLabel} once to start Voice Flow.`);
   }
   console.log(`3. Say: \"${expectedPhrase}\"`);
-  console.log(triggerMode === "fn_hold" ? "4. Release fn; Voice Flow should stop and paste automatically." : "4. Pause briefly; Voice Flow should stop and paste automatically.");
+  console.log(
+    triggerMode === "fn_hold"
+      ? `4. Release ${holdKeyInstruction}; Voice Flow should stop and paste automatically.`
+      : "4. Pause briefly; Voice Flow should stop and paste automatically."
+  );
   if (waitForEnter) {
     console.log("5. Return here and press Enter.");
   } else {

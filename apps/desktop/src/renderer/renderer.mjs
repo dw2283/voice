@@ -139,7 +139,7 @@ function formatAccessibilityState(value) {
 
 function formatTriggerModeValue(mode) {
   if (mode === "fn_hold") {
-    return "Fn hold";
+    return "Hold key";
   }
 
   if (mode === "hotkey") {
@@ -154,6 +154,8 @@ function updateTriggerDiagnosticsPanel() {
   const packaged = Boolean(settings?.isPackaged);
   const stableInstall = Boolean(diagnostics.inApplicationsFolder);
   const canMove = Boolean(diagnostics.canMoveToApplications);
+  const holdKeyLabel = diagnostics.holdKeyLabel || "Hold key";
+  const holdKeyName = holdKeyLabel.toLowerCase();
 
   triggerModeValueEl.textContent = formatTriggerModeValue(diagnostics.effectiveTriggerMode);
   triggerStatusValueEl.textContent = diagnostics.effectiveTriggerLabel || settings?.triggerLabel || "Unknown";
@@ -164,12 +166,12 @@ function updateTriggerDiagnosticsPanel() {
   appPathHintEl.textContent = packaged
     ? stableInstall
       ? "Installed in Applications. macOS permissions are much less likely to break."
-      : "This build is outside Applications. Moving it makes fn permission more stable across rebuilds and relaunches."
-    : "Development builds move around often, so fn permission is less stable than an installed packaged app.";
+      : `This build is outside Applications. Moving it makes ${holdKeyName} permission more stable across rebuilds and relaunches.`
+    : `Development builds move around often, so ${holdKeyName} permission is less stable than an installed packaged app.`;
 
   restartHintEl.textContent = stableInstall
-    ? "If you just changed Accessibility permission, use refresh once so Voice Flow can re-check fn immediately."
-    : "Install this packaged build in Applications first, then re-enable Accessibility if fn keeps falling back.";
+    ? `If you just changed Accessibility permission, use refresh once so Voice Flow can re-check ${holdKeyName} immediately.`
+    : `Install this packaged build in Applications first, then re-enable Accessibility if ${holdKeyName} keeps falling back.`;
 
   triggerDetailTextEl.textContent = uiState?.hotkeyStatus || "Waiting for trigger diagnostics.";
   triggerDetailTextEl.classList.toggle("alert", Boolean(diagnostics.usingFallbackHotkey));
@@ -235,7 +237,7 @@ function setPreviewMode() {
   accessibilityValueEl.textContent = "Unavailable";
   fnListenerValueEl.textContent = "Unavailable";
   appPathValueEl.textContent = "Unavailable";
-  appPathHintEl.textContent = "Install and launch the packaged app to test fn permissions.";
+  appPathHintEl.textContent = "Install and launch the packaged app to test hold-key permissions.";
   restartHintEl.textContent = "Diagnostics actions are only available inside the Electron app.";
   triggerDetailTextEl.textContent = "Electron IPC is unavailable in preview mode.";
   toggleDictationButton.disabled = true;
@@ -345,7 +347,7 @@ async function init() {
 
   refreshTriggerButton.addEventListener("click", () => {
     void refreshTriggerDiagnostics({ restartListener: true }).catch((error) => {
-      settingsErrorTextEl.textContent = error instanceof Error ? error.message : "Refreshing fn diagnostics failed.";
+      settingsErrorTextEl.textContent = error instanceof Error ? error.message : "Refreshing hold-key diagnostics failed.";
     });
   });
 

@@ -10,6 +10,7 @@ export const cacheDir = path.join(repoRoot, ".cache");
 export const logsDir = path.join(cacheDir, "logs");
 export const pidDir = path.join(cacheDir, "pids");
 export const defaultHotkey = "CommandOrControl+Shift+Space";
+export const defaultHoldKey = "control";
 export const defaultTriggerMode = process.platform === "darwin" ? "fn_hold" : "hotkey";
 
 export async function ensureRuntimeDirs() {
@@ -70,6 +71,7 @@ export function buildVoiceEnv(extraEnv = {}) {
     FLOW_AUTO_PASTE: "true",
     FLOW_AUTO_STOP_MAX_INITIAL_SILENCE_MS: "8000",
     FLOW_AUTO_STOP_SILENCE_MS: "650",
+    FLOW_HOLD_KEY: defaultHoldKey,
     FLOW_HOTKEY: defaultHotkey,
     FLOW_TRIGGER_MODE: defaultTriggerMode,
     FLOW_LOCAL_TRANSCRIBE_COMPUTE_TYPE: "int8",
@@ -134,18 +136,69 @@ export function formatHotkeyForDisplay(value, platform = process.platform) {
     .replaceAll("+", " + ");
 }
 
+export function normalizeHoldKey(value, fallback = defaultHoldKey) {
+  const normalized = String(value ?? fallback).trim().toLowerCase();
+
+  if (normalized === "ctrl") {
+    return "control";
+  }
+
+  if (normalized === "alt") {
+    return "option";
+  }
+
+  if (normalized === "cmd" || normalized === "meta") {
+    return "command";
+  }
+
+  if (normalized === "function") {
+    return "fn";
+  }
+
+  if (["fn", "control", "option", "shift", "command"].includes(normalized)) {
+    return normalized;
+  }
+
+  return fallback;
+}
+
+export function getHoldKey(env = process.env) {
+  return normalizeHoldKey(env.FLOW_HOLD_KEY);
+}
+
+export function formatHoldKeyForDisplay(value) {
+  const normalized = normalizeHoldKey(value);
+
+  if (normalized === "fn") {
+    return "Fn";
+  }
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
 export function getTriggerMode(env = process.env, platform = process.platform) {
   const raw = env.FLOW_TRIGGER_MODE ?? (platform === "darwin" ? "fn_hold" : "hotkey");
-  return String(raw).trim().toLowerCase() || (platform === "darwin" ? "fn_hold" : "hotkey");
+  const normalized = String(raw).trim().toLowerCase();
+
+  if (!normalized) {
+    return platform === "darwin" ? "fn_hold" : "hotkey";
+  }
+
+  if (normalized === "hold") {
+    return "fn_hold";
+  }
+
+  return normalized;
 }
 
 export function getTriggerLabel({
+  holdKey = defaultHoldKey,
   hotkey = defaultHotkey,
   platform = process.platform,
   triggerMode = getTriggerMode({ FLOW_TRIGGER_MODE: defaultTriggerMode }, platform)
 } = {}) {
   if (platform === "darwin" && triggerMode === "fn_hold") {
-    return "Fn (hold)";
+    return `${formatHoldKeyForDisplay(holdKey)} (hold)`;
   }
 
   return formatHotkeyForDisplay(hotkey, platform);

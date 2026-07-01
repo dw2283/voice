@@ -1011,7 +1011,7 @@
 
                 <div class="stage-actions">
                   <button class="primary" id="toggleDictationButton" type="button">Start dictation</button>
-                  <p class="stage-help">Use the `fn` hold flow or tap start manually when you want to dictate into the current app.</p>
+                  <p class="stage-help">Use your configured hold-to-dictate key or tap start manually when you want to dictate into the current app.</p>
                 </div>
               </article>
 
@@ -1042,7 +1042,7 @@
                 <div class="section-header">
                   <span class="eyebrow">Settings</span>
                   <h3>Connection and Permissions</h3>
-                  <p>Keep setup and fn diagnostics here so the main view can stay quiet and focused.</p>
+                  <p>Keep setup and hold-key diagnostics here so the main view can stay quiet and focused.</p>
                 </div>
                 <button class="secondary settings-close" id="settingsCloseButton" type="button">Close</button>
               </header>
@@ -1092,7 +1092,7 @@
               <section class="settings-section">
                 <div class="section-header">
                   <h3>Trigger and Permissions</h3>
-                  <p>Check whether fn is available right now, open Accessibility settings, and refresh the listener after permission changes.</p>
+                  <p>Check whether your configured hold key is available right now, open Accessibility settings, and refresh the listener after permission changes.</p>
                 </div>
 
                 <div class="diagnostics-grid">
@@ -1109,7 +1109,7 @@
                     <div class="value-pill" id="accessibilityValue">Loading…</div>
                   </div>
                   <div class="diag-card">
-                    <span class="field-label">Fn Listener</span>
+                    <span class="field-label">Hold Listener</span>
                     <div class="value-pill" id="fnListenerValue">Loading…</div>
                   </div>
                 </div>
@@ -1118,11 +1118,11 @@
 
                 <div class="settings-actions">
                   <button class="secondary" id="accessibilityActionButton" type="button">Open Accessibility Settings</button>
-                  <button class="secondary" id="refreshTriggerButton" type="button">Refresh fn Diagnostics</button>
+                  <button class="secondary" id="refreshTriggerButton" type="button">Refresh Hold Diagnostics</button>
                 </div>
 
                 <p class="microcopy" id="restartHint">
-                  If you just changed Accessibility permission, refresh once so Voice Flow can re-check fn immediately.
+                  If you just changed Accessibility permission, refresh once so Voice Flow can re-check your hold key immediately.
                 </p>
               </section>
 
@@ -1137,7 +1137,7 @@
                   <pre class="mono-box" id="appPathValue">Loading…</pre>
                 </div>
 
-                <p class="microcopy" id="appPathHint">Checking whether this install path is stable enough for fn permissions.</p>
+                <p class="microcopy" id="appPathHint">Checking whether this install path is stable enough for hold-key permissions.</p>
 
                 <div class="settings-actions">
                   <button class="secondary" id="moveToApplicationsButton" type="button">Move to Applications</button>

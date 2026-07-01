@@ -7,6 +7,7 @@ import {
   buildVoiceEnv,
   cacheDir,
   ensureRuntimeDirs,
+  getHoldKey,
   getTriggerLabel,
   getTriggerMode,
   readEnvFile,
@@ -19,9 +20,11 @@ const resultPath = path.join(cacheDir, "focus-smoke-result.json");
 const runtimeStatePath = path.join(cacheDir, "desktop-runtime-state.json");
 const preflightOnly = process.argv.includes("--preflight-only");
 const voiceEnv = buildVoiceEnv(await readEnvFile());
+const holdKey = getHoldKey(voiceEnv);
 const triggerMode = getTriggerMode(voiceEnv);
 const hotkey = voiceEnv.FLOW_HOTKEY;
 const triggerLabel = getTriggerLabel({
+  holdKey,
   hotkey,
   triggerMode
 });
@@ -180,7 +183,7 @@ async function main() {
 
   if (triggerMode === "fn_hold") {
     throw new Error(
-      "Focus smoke only supports `FLOW_TRIGGER_MODE=hotkey`. The current trigger is `Fn (hold)`, so use `npm run voice:manual-check` for the real verification flow."
+      `Focus smoke only supports \`FLOW_TRIGGER_MODE=hotkey\`. The current trigger is \`${triggerLabel}\`, so use \`npm run voice:manual-check\` for the real verification flow.`
     );
   }
 

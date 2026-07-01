@@ -2,14 +2,14 @@
 
 Mac-first clone of the core Wispr Flow experience:
 
-- `fn` hold-to-talk trigger plus an on-screen fallback
+- configurable modifier hold-to-talk trigger plus an on-screen fallback
 - short dictation session
 - cloud speech transcription with optional AI polish
 - optional AI polish pass
 - paste output text back into the active app
 - packaged Mac beta release pipeline with signing, notarization, and auto-update hooks
 
-The main experience is a tiny AI voice overlay. Hold `fn`, speak, then release it, and the output text is pasted back into the app you were using. The overlay is an audio-reactive orb rather than a cartoon pet, so it behaves more like a focused voice input tool.
+The main experience is a tiny AI voice overlay. Hold your configured modifier key, speak, then release it, and the output text is pasted back into the app you were using. The overlay is an audio-reactive orb rather than a cartoon pet, so it behaves more like a focused voice input tool.
 
 ## Run It
 
@@ -18,17 +18,17 @@ npm run voice:setup
 npm run voice:restart
 ```
 
-`voice:setup` verifies local dependencies, builds the native `fn` listener helper, and creates `.env` from `.env.example` if it is missing. On a fresh machine, run `npm run voice:setup -- --install` to install Node dependencies. Python is only required when you intentionally clear `FLOW_TRANSCRIBE_MODEL` and fall back to local Whisper.
+`voice:setup` verifies local dependencies, builds the native hold-key listener helper, and creates `.env` from `.env.example` if it is missing. On a fresh machine, run `npm run voice:setup -- --install` to install Node dependencies. Python is only required when you intentionally clear `FLOW_TRANSCRIBE_MODEL` and fall back to local Whisper.
 
 `voice:restart` stops stale Voice Flow API, Electron, and local transcription worker processes, then starts one clean backend and one clean desktop app. Logs go to `.cache/logs`.
 
-Use `fn` on macOS as the default trigger: hold it to dictate, then release it to stop and paste. If `fn` is unavailable on the current keyboard, you can still fall back to the dashboard trigger button or switch to `FLOW_TRIGGER_MODE=hotkey` and set `FLOW_HOTKEY`. Right-click the tiny overlay to open the dashboard.
+Use modifier-hold mode on macOS as the default trigger: hold the key configured by `FLOW_HOLD_KEY` to dictate, then release it to stop and paste. The default is `control`; if you prefer the keyboard function key behavior, switch it back to `fn`. If you prefer a regular shortcut instead, switch to `FLOW_TRIGGER_MODE=hotkey` and set `FLOW_HOTKEY`. Right-click the tiny overlay to open the dashboard.
 
 The default auto-stop timing is tuned for speed: `FLOW_AUTO_STOP_SILENCE_MS=650`, `FLOW_MIN_RECORDING_MS=700`, and `FLOW_AUTO_STOP_MAX_INITIAL_SILENCE_MS=8000`.
 
 ## Runtime Setup
 
-The local `.env` file is gitignored and stores the OpenAI-compatible endpoint, model names, bearer tokens, trigger mode, fallback hotkey, polish toggle, and OpenAI key. The current default flow is:
+The local `.env` file is gitignored and stores the OpenAI-compatible endpoint, model names, bearer tokens, trigger mode, hold key, fallback hotkey, polish toggle, and OpenAI key. The current default flow is:
 
 - desktop capture: Electron + native microphone permission
 - transcription: OpenAI-compatible model, default `gpt-4o-mini-transcribe`
@@ -65,7 +65,7 @@ See [docs/beta-distribution.md](/Users/dingwang/Documents/voice/docs/beta-distri
 
 - `npm run voice:setup`: verify local setup and create missing config files.
 - `npm run voice:doctor`: check local config, dependencies, processes, API health, and recent logs.
-- `npm run voice:focus-smoke`: best-effort focus probe for `FLOW_TRIGGER_MODE=hotkey`; if you stay on the default `fn` mode, use `voice:manual-check` instead.
+- `npm run voice:focus-smoke`: best-effort focus probe for `FLOW_TRIGGER_MODE=hotkey`; if you stay on modifier-hold mode, use `voice:manual-check` instead.
 - `npm run voice:focus-smoke -- --preflight-only`: verify focus-smoke prerequisites without opening TextEdit or pressing the trigger.
 - `npm run voice:flow-smoke`: generate test audio, transcribe and polish it, paste the polished text into TextEdit, then read it back.
 - `npm run voice:hotkey-smoke`: best-effort automated trigger proxy for `FLOW_TRIGGER_MODE=hotkey`; still requires manual confirmation when speaker-to-microphone capture fails.
@@ -80,12 +80,12 @@ See [docs/beta-distribution.md](/Users/dingwang/Documents/voice/docs/beta-distri
 - `npm run voice:restart`: clean restart the full app.
 - `npm run dev:api`: run only the API in the foreground.
 - `npm run dev:desktop`: run only Electron in the foreground.
-- `npm run build:fn-listener`: compile the current-machine macOS helper used for `fn` hold detection.
+- `npm run build:fn-listener`: compile the current-machine macOS helper used for modifier-hold detection.
 - `npm run release:mac`: build the signed/notarized Mac beta payloads when release secrets are configured.
 - `npm run release:mac:dir`: build an unpacked Apple Silicon Mac app directory for local packaging verification.
 
 `voice:manual-check` writes its latest result to `.cache/manual-check-result.json` so the final human check can be recorded without relying on chat history.
-`voice:focus-smoke` writes its latest result to `.cache/focus-smoke-result.json`; it only automates the fallback hotkey path, so `fn` mode still needs `voice:manual-check`.
+`voice:focus-smoke` writes its latest result to `.cache/focus-smoke-result.json`; it only automates the fallback hotkey path, so modifier-hold mode still needs `voice:manual-check`.
 `voice:hotkey-smoke` writes its latest result to `.cache/hotkey-smoke-result.json`; it only automates the fallback hotkey path and may fail if macOS speaker audio is not captured by the microphone.
 
 ## Repo layout
@@ -101,5 +101,5 @@ See [docs/beta-distribution.md](/Users/dingwang/Documents/voice/docs/beta-distri
 - `apps/api` serves the playground and health check on `http://127.0.0.1:8000/` by default, or any host you set with `FLOW_API_HOST`.
 - `apps/desktop` defaults to a hidden AI voice overlay and wakes near the active window, falling back to the mouse cursor when needed.
 - Browser `SpeechRecognition` is disabled for the desktop path; audio goes through the backend.
-- Desktop release builds currently target Apple Silicon first and resolve the `fn` listener from a bundled binary instead of compiling Objective-C at runtime.
+- Desktop release builds currently target Apple Silicon first and resolve the hold-key listener from a bundled binary instead of compiling Objective-C at runtime.
 - `render.yaml` defines a reference Render deployment for the API, and `.github/workflows/release.yml` defines the Mac beta release pipeline.

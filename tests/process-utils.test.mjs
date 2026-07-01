@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildVoiceEnv,
+  getHoldKey,
   getApiMode,
   getTriggerLabel,
   getTriggerMode,
   isPolishEnabled,
   isLocalApiBaseUrl,
+  normalizeHoldKey,
   needsLocalWhisper
 } from "../scripts/process-utils.mjs";
 
@@ -58,12 +60,31 @@ test("getTriggerMode normalizes trigger mode values", () => {
 test("getTriggerLabel shows Fn hold on macOS when fn mode is enabled", () => {
   assert.equal(
     getTriggerLabel({
+      holdKey: "fn",
       hotkey: "CommandOrControl+Shift+Space",
       platform: "darwin",
       triggerMode: "fn_hold"
     }),
     "Fn (hold)"
   );
+});
+
+test("getTriggerLabel reflects the configured hold key on macOS", () => {
+  assert.equal(
+    getTriggerLabel({
+      holdKey: "control",
+      hotkey: "CommandOrControl+Shift+Space",
+      platform: "darwin",
+      triggerMode: "fn_hold"
+    }),
+    "Control (hold)"
+  );
+});
+
+test("getHoldKey normalizes aliases and invalid values", () => {
+  assert.equal(getHoldKey({ FLOW_HOLD_KEY: "ctrl" }), "control");
+  assert.equal(getHoldKey({ FLOW_HOLD_KEY: "alt" }), "option");
+  assert.equal(normalizeHoldKey("???"), "control");
 });
 
 test("buildVoiceEnv enables polish by default", () => {

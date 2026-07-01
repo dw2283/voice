@@ -25,8 +25,9 @@ let startRecordingPromise = null;
 let settings = {
   autoStopAfterSilenceMs,
   autoStopMaxInitialSilenceMs,
+  holdKey: "control",
   hotkey: "CommandOrControl+Shift+Space",
-  triggerLabel: "Fn (hold)",
+  triggerLabel: "Control (hold)",
   triggerMode: "fn_hold",
   minimumAutoStopRecordingMs,
   preferBrowserSpeechRecognition: false,
@@ -35,7 +36,7 @@ let settings = {
 };
 let uiState = {
   mode: "idle",
-  status: "Hold fn to dictate.",
+  status: "Hold control to dictate.",
   micStatus: "Microphone status is loading...",
   rawTranscript: "No transcript yet.",
   polishedText: "No polished output yet.",
@@ -51,6 +52,20 @@ function prettyHotkey(value) {
     .replace("CommandOrControl", navigator.platform.includes("Mac") ? "Cmd" : "Ctrl")
     .replaceAll("Alt", navigator.platform.includes("Mac") ? "Opt" : "Alt")
     .replaceAll("+", " + ");
+}
+
+function getHoldKeyInstructionText() {
+  const normalized = String(settings.holdKey ?? "control").trim().toLowerCase();
+
+  if (normalized === "fn") {
+    return "fn";
+  }
+
+  if (["control", "option", "shift", "command"].includes(normalized)) {
+    return normalized;
+  }
+
+  return "control";
 }
 
 function compactText(value, maxLength = 28) {
@@ -343,7 +358,7 @@ async function startRecording({ holdToTalk = false } = {}) {
       await publishState({
         mode: "listening",
         status: holdToTalk
-          ? "Voice is listening. Release fn and I’ll paste what you said."
+          ? `Voice is listening. Release ${getHoldKeyInstructionText()} and I’ll paste what you said.`
           : "Voice is listening. Pause briefly and I’ll paste automatically.",
         rawTranscript: "Listening...",
         isRecording: true
@@ -399,7 +414,7 @@ async function stopRecording({ reason = "manual" } = {}) {
     if (reason === "initial-silence") {
       throw new Error(
         settings.triggerMode === "fn_hold"
-          ? "I didn’t hear anything. Hold fn and start speaking right away."
+          ? `I didn’t hear anything. Hold ${getHoldKeyInstructionText()} and start speaking right away.`
           : "I didn’t hear anything. Press the trigger and start speaking."
       );
     }
@@ -407,7 +422,7 @@ async function stopRecording({ reason = "manual" } = {}) {
     if (Date.now() - recordingStartedAt < 450 || blob.size === 0) {
       throw new Error(
         settings.triggerMode === "fn_hold"
-          ? "I did not catch enough audio. Hold fn a bit longer and speak clearly."
+          ? `I did not catch enough audio. Hold ${getHoldKeyInstructionText()} a bit longer and speak clearly.`
           : "I did not catch enough audio. Speak, then pause briefly."
       );
     }
@@ -536,7 +551,7 @@ async function init() {
   if (uiState.mode === "idle" && !uiState.status) {
     uiState.status =
       settings.triggerMode === "fn_hold"
-        ? "Hold fn to dictate."
+        ? `Hold ${getHoldKeyInstructionText()} to dictate.`
         : `Press ${settings.triggerLabel || prettyHotkey(settings.hotkey)} to dictate.`;
   }
 

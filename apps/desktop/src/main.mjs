@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
@@ -65,26 +66,35 @@ let fallbackHotkeyActive = false;
 let triggerDiagnosticsInterval = null;
 let triggerDiagnosticsRefreshInFlight = false;
 let lastObservedAccessibilityTrusted = null;
+const expectedFnKeyListenerExits = new WeakSet();
 const petWindowSize = {
   width: 154,
   height: 64
 };
-const configuredTriggerMode = String(process.env.FLOW_TRIGGER_MODE ?? (isMac ? "fn_hold" : "hotkey"))
-  .trim()
-  .toLowerCase();
+const configuredTriggerMode = normalizeTriggerMode(process.env.FLOW_TRIGGER_MODE ?? (isMac ? "fn_hold" : "hotkey"));
+const configuredHoldKey = normalizeHoldKey(process.env.FLOW_HOLD_KEY ?? "control");
+const configuredHoldKeyLabel = formatHoldKeyLabel(configuredHoldKey);
+const configuredHoldDelayMs = getNumberEnv(
+  "FLOW_HOLD_TRIGGER_DELAY_MS",
+  configuredHoldKey === "fn" ? 0 : 180,
+  0,
+  1000
+);
 const configuredHotkey = process.env.FLOW_HOTKEY ?? "CommandOrControl+Shift+Space";
 const configuredHotkeyLabel = formatAcceleratorLabel(configuredHotkey);
 const baseSettings = {
   autoPaste: (process.env.FLOW_AUTO_PASTE ?? "true").toLowerCase() === "true",
   autoStopAfterSilenceMs: getNumberEnv("FLOW_AUTO_STOP_SILENCE_MS", 650, 350, 2000),
   autoStopMaxInitialSilenceMs: getNumberEnv("FLOW_AUTO_STOP_MAX_INITIAL_SILENCE_MS", 8000, 3000, 15000),
+  holdKey: configuredHoldKey,
+  holdTriggerDelayMs: configuredHoldDelayMs,
   hotkey: configuredHotkey,
   minimumAutoStopRecordingMs: getNumberEnv("FLOW_MIN_RECORDING_MS", 700, 250, 2000),
   preferBrowserSpeechRecognition:
     (process.env.FLOW_PREFER_BROWSER_SPEECH_RECOGNITION ?? "false").toLowerCase() === "true",
   transcribeModel: process.env.FLOW_TRANSCRIBE_MODEL ?? "",
   transcribeProvider: process.env.FLOW_TRANSCRIBE_PROVIDER ?? "mock",
-  triggerLabel: configuredTriggerMode === "fn_hold" && isMac ? "Fn (hold)" : configuredHotkeyLabel,
+  triggerLabel: configuredTriggerMode === "fn_hold" && isMac ? `${configuredHoldKeyLabel} (hold)` : configuredHotkeyLabel,
   triggerMode: configuredTriggerMode
 };
 const desktopConfigStore = createDesktopConfigStore({
@@ -119,6 +129,72 @@ function formatAcceleratorLabel(value) {
     .replaceAll("Meta", isMac ? "Command" : "Meta")
     .replaceAll("Alt", isMac ? "Option" : "Alt")
     .replaceAll("+", " + ");
+}
+
+function normalizeTriggerMode(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  if (!normalized) {
+    return isMac ? "fn_hold" : "hotkey";
+  }
+
+  if (normalized === "hold") {
+    return "fn_hold";
+  }
+
+  return normalized;
+}
+
+function normalizeHoldKey(value) {
+  const normalized = String(value ?? "control").trim().toLowerCase();
+
+  if (normalized === "ctrl") {
+    return "control";
+  }
+
+  if (normalized === "alt") {
+    return "option";
+  }
+
+  if (normalized === "cmd" || normalized === "meta") {
+    return "command";
+  }
+
+  if (normalized === "function") {
+    return "fn";
+  }
+
+  if (["fn", "control", "option", "shift", "command"].includes(normalized)) {
+    return normalized;
+  }
+
+  return "control";
+}
+
+function formatHoldKeyLabel(value) {
+  const normalized = normalizeHoldKey(value);
+
+  if (normalized === "fn") {
+    return "Fn";
+  }
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function getHoldKeyInstructionText() {
+  return configuredHoldKey === "fn" ? "fn" : configuredHoldKeyLabel.toLowerCase();
+}
+
+function getHoldListenerPrefix() {
+  return `${configuredHoldKeyLabel} hold listener`;
+}
+
+function getHoldListenerActiveMessage() {
+  return `${getHoldListenerPrefix()} is active.`;
+}
+
+function getHoldListenerPermissionMessage() {
+  return `${getHoldListenerPrefix()} needs Accessibility permission in System Settings > Privacy & Security > Accessibility.`;
 }
 
 function clamp(value, min, max) {
@@ -185,7 +261,9 @@ function getTriggerDiagnostics() {
     effectiveTriggerLabel: getEffectiveTriggerLabel(),
     effectiveTriggerMode: getEffectiveTriggerMode(),
     fnListenerRunning: Boolean(fnKeyListenerProcess),
-    helperBinaryExists: Boolean(helperBinaryPath),
+    holdKey: configuredHoldKey,
+    holdKeyLabel: configuredHoldKeyLabel,
+    helperBinaryExists: existsSync(helperBinaryPath),
     helperBinaryPath,
     inApplicationsFolder,
     packagedBundlePath,
@@ -275,7 +353,7 @@ function getIdleStatusText() {
       return `Press ${configuredHotkeyLabel} to dictate.`;
     }
 
-    return "Hold fn to dictate.";
+    return `Hold ${getHoldKeyInstructionText()} to dictate.`;
   }
 
   return `Press ${configuredHotkeyLabel} to dictate.`;
@@ -1014,9 +1092,7 @@ async function refreshTriggerDiagnostics({ restartListener = false } = {}) {
       } else if (accessibilityTrusted && !fnKeyListenerProcess) {
         await startFnKeyListener();
       } else if (accessibilityTrusted === false && !fallbackHotkeyActive) {
-        activateHotkeyFallback(
-          "Fn hold listener needs Accessibility permission in System Settings > Privacy & Security > Accessibility."
-        );
+        activateHotkeyFallback(getHoldListenerPermissionMessage());
       }
     }
 
@@ -1049,9 +1125,7 @@ function startTriggerDiagnosticsMonitor() {
     }
 
     if (!fallbackHotkeyActive) {
-      activateHotkeyFallback(
-        "Fn hold listener needs Accessibility permission in System Settings > Privacy & Security > Accessibility."
-      );
+      activateHotkeyFallback(getHoldListenerPermissionMessage());
     }
   }, 2500);
 }
@@ -1120,7 +1194,7 @@ async function ensureFnKeyListenerBinary() {
     await fs.access(getFnKeyListenerBinaryPath());
     return getFnKeyListenerBinaryPath();
   } catch {
-    throw new Error("Fn hold helper is missing. Run npm run build:fn-listener or rebuild the packaged app.");
+    throw new Error("Hold-key helper is missing. Run npm run build:fn-listener or rebuild the packaged app.");
   }
 }
 
@@ -1130,7 +1204,7 @@ function handleFnKeyListenerMessage(rawLine) {
   try {
     payload = JSON.parse(rawLine);
   } catch {
-    console.warn(`Voice Flow fn listener emitted invalid JSON: ${rawLine}`);
+    console.warn(`Voice Flow hold listener emitted invalid JSON: ${rawLine}`);
     return;
   }
 
@@ -1139,8 +1213,8 @@ function handleFnKeyListenerMessage(rawLine) {
     const message =
       payload.message ||
       (trusted
-        ? "Fn hold listener is active."
-        : "Fn hold listener needs Accessibility permission in System Settings > Privacy & Security > Accessibility.");
+        ? getHoldListenerActiveMessage()
+        : getHoldListenerPermissionMessage());
 
     if (trusted) {
       deactivateHotkeyFallback(message);
@@ -1151,7 +1225,7 @@ function handleFnKeyListenerMessage(rawLine) {
     return;
   }
 
-  if (payload.event !== "fn") {
+  if (payload.event !== "hold" && payload.event !== "fn") {
     return;
   }
 
@@ -1161,8 +1235,8 @@ function handleFnKeyListenerMessage(rawLine) {
     }
 
     fnHoldPressed = true;
-    const triggeredAt = recordTriggerActivity("Fn hold listener is active.");
-    console.log(`Voice Flow fn trigger down at ${triggeredAt}`);
+    const triggeredAt = recordTriggerActivity(payload.message || getHoldListenerActiveMessage());
+    console.log(`Voice Flow ${configuredHoldKey} trigger down at ${triggeredAt}`);
     void triggerDictationStart({
       holdToTalk: true,
       source: "fn_hold"
@@ -1176,7 +1250,7 @@ function handleFnKeyListenerMessage(rawLine) {
     }
 
     fnHoldPressed = false;
-    console.log("Voice Flow fn trigger released");
+    console.log(`Voice Flow ${configuredHoldKey} trigger released`);
 
     if (uiState.isRecording) {
       triggerDictationStop({
@@ -1196,41 +1270,55 @@ async function startFnKeyListener() {
   try {
     binaryPath = await ensureFnKeyListenerBinary();
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Fn hold listener setup failed.";
+    const message = error instanceof Error ? error.message : `${getHoldListenerPrefix()} setup failed.`;
 
-    console.error(`Voice Flow failed to prepare fn hold listener: ${message}`);
-    activateHotkeyFallback(`Fn hold listener setup failed: ${message}`);
+    console.error(`Voice Flow failed to prepare ${getHoldListenerPrefix()}: ${message}`);
+    activateHotkeyFallback(`${getHoldListenerPrefix()} setup failed: ${message}`);
     return;
   }
 
-  const child = spawn(binaryPath, [], {
+  const helperArgs = ["--hold-key", configuredHoldKey, "--hold-delay-ms", String(configuredHoldDelayMs)];
+  const child = spawn(binaryPath, helperArgs, {
     stdio: ["ignore", "pipe", "pipe"]
   });
 
   fnKeyListenerProcess = child;
-  fnKeyListenerReader = readline.createInterface({
+  const reader = readline.createInterface({
     input: child.stdout
   });
+  fnKeyListenerReader = reader;
 
-  fnKeyListenerReader.on("line", (line) => {
+  reader.on("line", (line) => {
     handleFnKeyListenerMessage(line);
   });
 
   child.stderr.on("data", (chunk) => {
-    console.warn(`Voice Flow fn listener stderr: ${chunk.toString().trim()}`);
+    console.warn(`Voice Flow hold listener stderr: ${chunk.toString().trim()}`);
   });
 
   child.on("exit", (code, signal) => {
-    fnKeyListenerReader?.close();
-    fnKeyListenerReader = null;
-    fnKeyListenerProcess = null;
-    fnHoldPressed = false;
+    const expectedExit = expectedFnKeyListenerExits.has(child);
+    expectedFnKeyListenerExits.delete(child);
+    reader.close();
 
-    if (isQuitting) {
+    if (fnKeyListenerReader === reader) {
+      fnKeyListenerReader = null;
+    }
+
+    if (fnKeyListenerProcess === child) {
+      fnKeyListenerProcess = null;
+      fnHoldPressed = false;
+    }
+
+    if (isQuitting || expectedExit) {
       return;
     }
 
-    const detail = `Fn hold listener exited unexpectedly (code ${code ?? "null"}, signal ${signal ?? "none"}).`;
+    if (fnKeyListenerProcess && fnKeyListenerProcess !== child) {
+      return;
+    }
+
+    const detail = `${getHoldListenerPrefix()} exited unexpectedly (code ${code ?? "null"}, signal ${signal ?? "none"}).`;
     console.error(detail);
     activateHotkeyFallback(detail);
   });
@@ -1241,6 +1329,7 @@ function stopFnKeyListener() {
     return;
   }
 
+  expectedFnKeyListenerExits.add(fnKeyListenerProcess);
   fnKeyListenerProcess.kill("SIGTERM");
   fnKeyListenerProcess = null;
   fnHoldPressed = false;
