@@ -116,9 +116,10 @@ const uiState = {
   hotkeyTriggerCount: 0,
   lastHotkeyTriggeredAt: "",
   rawTranscript: "No transcript yet.",
-  polishedText: "No polished output yet.",
+  polishedText: "No converted text yet.",
   provider: "unknown",
   isRecording: false,
+  resultStage: "idle",
   dashboardVisible: false,
   updatedAt: Date.now()
 };
@@ -1653,8 +1654,28 @@ ipcMain.handle("flow:process-dictation", async (_event, payload) => {
     ...payload,
     traceId
   };
+  const pasteState = {
+    clipboardRestoreDeferredMs: 0,
+    ms: 0,
+    stage: "none",
+    text: ""
+  };
 
   delete requestPayload.clientTimings;
+
+  async function pasteIfNeeded(text, stage) {
+    if (!baseSettings.autoPaste || !text || pasteState.stage !== "none") {
+      return false;
+    }
+
+    const pasteStartedAt = performance.now();
+    const pasteResult = await pasteText(text);
+    pasteState.clipboardRestoreDeferredMs = pasteResult?.clipboardRestoreDeferredMs ?? 0;
+    pasteState.ms = performance.now() - pasteStartedAt;
+    pasteState.stage = stage;
+    pasteState.text = text;
+    return true;
+  }
 
   try {
     const apiStartedAt = performance.now();
@@ -1681,6 +1702,7 @@ ipcMain.handle("flow:process-dictation", async (_event, payload) => {
             isRecording: false,
             mode: "processing",
             provider: streamState.provider,
+            resultStage: "working",
             status: "Uploading your audio..."
           });
           return;
@@ -1691,21 +1713,34 @@ ipcMain.handle("flow:process-dictation", async (_event, payload) => {
             isRecording: false,
             mode: "processing",
             provider: streamState.provider,
+            resultStage: "working",
             status: "Transcribing your speech..."
           });
           return;
         }
 
         if (event.type === "transcribe.completed") {
-          const previewText = streamState.rawTranscript || "Transcript ready.";
+          const rawTranscript = streamState.rawTranscript || "";
+          let rawPasted = false;
+
+          if (rawTranscript) {
+            try {
+              rawPasted = await pasteIfNeeded(rawTranscript, "raw");
+            } catch {
+              rawPasted = false;
+            }
+          }
 
           broadcastUiState({
             isRecording: false,
             mode: "processing",
-            polishedText: previewText,
+            polishedText: "",
             provider: streamState.provider,
-            rawTranscript: streamState.rawTranscript || uiState.rawTranscript,
-            status: "Transcript ready. Refining your words..."
+            rawTranscript: rawTranscript || uiState.rawTranscript,
+            resultStage: rawTranscript ? "raw" : "working",
+            status: rawPasted
+              ? "Raw transcript pasted. Polishing in the background..."
+              : "Transcript ready. Refining your words..."
           });
           return;
         }
@@ -1717,7 +1752,10 @@ ipcMain.handle("flow:process-dictation", async (_event, payload) => {
             polishedText: streamState.polishedText || streamState.rawTranscript || uiState.polishedText,
             provider: streamState.provider,
             rawTranscript: streamState.rawTranscript || uiState.rawTranscript,
-            status: "Polishing your words..."
+            resultStage: streamState.polishedText ? "polishing" : streamState.rawTranscript ? "raw" : "working",
+            status: pasteState.stage === "raw"
+              ? "Raw transcript pasted. Polishing in the background..."
+              : "Polishing your words..."
           });
           return;
         }
@@ -1731,7 +1769,20 @@ ipcMain.handle("flow:process-dictation", async (_event, payload) => {
             polishedText: nextPolishedText,
             provider: streamState.provider,
             rawTranscript: streamState.rawTranscript || uiState.rawTranscript,
-            status: event.type === "polish.completed" || event.type === "polish.disabled" ? "Finishing up..." : "Polishing your words..."
+            resultStage:
+              event.type === "polish.completed" || event.type === "polish.disabled"
+                ? "polished"
+                : streamState.polishedText
+                  ? "polishing"
+                  : "raw",
+            status:
+              event.type === "polish.completed" || event.type === "polish.disabled"
+                ? pasteState.stage === "raw"
+                  ? "Polished result ready in Voice Flow."
+                  : "Finishing up..."
+                : pasteState.stage === "raw"
+                  ? "Raw transcript pasted. Polishing in the background..."
+                  : "Polishing your words..."
           });
         }
       }
@@ -1739,27 +1790,37 @@ ipcMain.handle("flow:process-dictation", async (_event, payload) => {
     const apiMs = performance.now() - apiStartedAt;
     const textToPaste = result.polishedText || result.rawTranscript || "";
     let pasteError = "";
-    let pasteMs = 0;
-    let clipboardRestoreDeferredMs = 0;
 
-    if (baseSettings.autoPaste && textToPaste) {
+    if (baseSettings.autoPaste && textToPaste && pasteState.stage === "none") {
       try {
-        const pasteStartedAt = performance.now();
-        const pasteResult = await pasteText(textToPaste);
-        pasteMs = performance.now() - pasteStartedAt;
-        clipboardRestoreDeferredMs = pasteResult?.clipboardRestoreDeferredMs ?? 0;
+        await pasteIfNeeded(textToPaste, "final");
       } catch (error) {
         pasteError = error instanceof Error ? error.message : "Paste automation failed.";
       }
     }
 
+    const polishedDiffersFromRaw =
+      Boolean(result.rawTranscript) &&
+      Boolean(textToPaste) &&
+      textToPaste.trim() !== result.rawTranscript.trim();
+    const finalStatus = pasteError
+      ? pasteError
+      : pasteState.stage === "raw"
+        ? polishedDiffersFromRaw
+          ? "Raw transcript pasted. Polished result is ready in Voice Flow."
+          : "Raw transcript pasted into your app."
+        : baseSettings.autoPaste
+          ? "Pasted back into your app."
+          : `Transcribed with ${result.provider}.`;
+
     logTiming("dictation.completed", {
       apiMs: roundTimingMs(apiMs),
       autoPaste: baseSettings.autoPaste,
       clientTimings,
-      clipboardRestoreDeferredMs,
+      clipboardRestoreDeferredMs: pasteState.clipboardRestoreDeferredMs,
       pasteError,
-      pasteMs: roundTimingMs(pasteMs),
+      pasteMs: roundTimingMs(pasteState.ms),
+      pasteStage: pasteState.stage,
       provider: result.provider,
       totalMs: roundTimingMs(performance.now() - startedAt),
       traceId
@@ -1771,8 +1832,9 @@ ipcMain.handle("flow:process-dictation", async (_event, payload) => {
       mode: pasteError ? "error" : "done",
       polishedText: textToPaste,
       provider: result.provider,
+      resultStage: polishedDiffersFromRaw ? "polished" : result.rawTranscript ? "raw" : "idle",
       rawTranscript: result.rawTranscript,
-      status: pasteError || (baseSettings.autoPaste ? "Pasted back into your app." : `Transcribed with ${result.provider}.`)
+      status: finalStatus
     });
 
     return {

@@ -211,7 +211,7 @@ function updateHoldHint() {
   holdHintKeyEl.textContent = holdKeyLabel.toLowerCase();
 }
 
-function updateResultStatePill(mode) {
+function updateResultStatePill(mode, resultStage = "idle") {
   if (!resultStatePillEl) {
     return;
   }
@@ -224,7 +224,14 @@ function updateResultStatePill(mode) {
 
   if (mode === "processing" || mode === "arming") {
     resultStatePillEl.dataset.state = "busy";
-    resultStatePillEl.textContent = "Working";
+    resultStatePillEl.textContent =
+      resultStage === "raw"
+        ? "Raw transcript"
+        : resultStage === "polishing"
+          ? "Polishing"
+          : resultStage === "polished"
+            ? "Polished"
+            : "Working";
     return;
   }
 
@@ -235,7 +242,7 @@ function updateResultStatePill(mode) {
   }
 
   resultStatePillEl.dataset.state = "idle";
-  resultStatePillEl.textContent = "Paste ready";
+  resultStatePillEl.textContent = resultStage === "polished" ? "Polished" : resultStage === "raw" ? "Raw pasted" : "Paste ready";
 }
 
 function applyState(nextState) {
@@ -246,10 +253,10 @@ function applyState(nextState) {
   modeValueEl.textContent = formatMode(nextState.mode);
   micValueEl.textContent = nextState.micStatus || "Unknown";
   statusTextEl.textContent = nextState.status || "Waiting for the pet.";
-  const polishedText = nextState.polishedText || "No polished output yet.";
-  polishedTextEl.textContent = polishedText;
-  polishedTextEl.dataset.empty = String(polishedText === "No polished output yet.");
-  updateResultStatePill(nextState.mode);
+  const convertedText = nextState.polishedText || nextState.rawTranscript || "No converted text yet.";
+  polishedTextEl.textContent = convertedText;
+  polishedTextEl.dataset.empty = String(convertedText === "No converted text yet.");
+  updateResultStatePill(nextState.mode, nextState.resultStage);
   updateTriggerDiagnosticsPanel();
   updateButtons();
 }
@@ -281,7 +288,7 @@ function setPreviewMode() {
   statusTextEl.textContent = "This dashboard renderer was opened directly in a browser tab. Launch the Electron desktop app instead.";
   polishedTextEl.textContent = "Start the desktop app with `npm run dev:desktop`.";
   polishedTextEl.dataset.empty = "false";
-  updateResultStatePill("idle");
+  updateResultStatePill("idle", "idle");
   connectionStatusEl.textContent = "Preview mode cannot save API settings.";
   secureStorageTextEl.textContent = "Secure token storage is only available inside the Electron app.";
   settingsErrorTextEl.textContent = "Electron IPC is unavailable in preview mode.";

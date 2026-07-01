@@ -39,7 +39,7 @@ let uiState = {
   status: "Hold control to dictate.",
   micStatus: "Microphone status is loading...",
   rawTranscript: "No transcript yet.",
-  polishedText: "No polished output yet.",
+  polishedText: "No converted text yet.",
   provider: "unknown",
   isRecording: false,
   dashboardVisible: false
@@ -94,7 +94,7 @@ function getModeCopy(state) {
       ? compactText(state.rawTranscript)
       : "";
   const polishedPreview =
-    state.polishedText && state.polishedText !== "No polished output yet."
+    state.polishedText && state.polishedText !== "No converted text yet."
       ? compactText(state.polishedText)
       : "";
 
@@ -121,8 +121,8 @@ function getModeCopy(state) {
 
   if (state.mode === "done") {
     return {
-      detail: "Pasted into your app.",
-      title: "Pasted"
+      detail: compactText(state.status, 34) || "Pasted into your app.",
+      title: polishedPreview && transcriptPreview && polishedPreview !== transcriptPreview ? "Polished" : "Pasted"
     };
   }
 
@@ -360,6 +360,7 @@ async function startRecording({ holdToTalk = false } = {}) {
         status: holdToTalk
           ? `Voice is listening. Release ${getHoldKeyInstructionText()} and I’ll paste what you said.`
           : "Voice is listening. Pause briefly and I’ll paste automatically.",
+        polishedText: "",
         rawTranscript: "Listening...",
         isRecording: true
       });
