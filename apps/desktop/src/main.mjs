@@ -33,7 +33,7 @@ const runtimeStateFilePath = path.join(userDataPath, "desktop-runtime-state.json
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const isMac = process.platform === "darwin";
 
-app.setName("Voice Flow");
+app.setName("VoiceKit");
 
 installRuntimeGuards({
   logFilePath: runtimeLogFilePath
@@ -102,14 +102,14 @@ const desktopConfigStore = createDesktopConfigStore({
   safeStorage
 });
 const updateState = {
-  message: app.isPackaged ? "Voice Flow will check for beta updates after launch." : "Auto-update is only active in packaged beta builds.",
+  message: app.isPackaged ? "VoiceKit will check for beta updates after launch." : "Auto-update is only active in packaged beta builds.",
   progress: 0,
   status: app.isPackaged ? "idle" : "disabled",
   version: ""
 };
 const uiState = {
   mode: "idle",
-  status: "Loading Voice Flow...",
+  status: "Loading VoiceKit...",
   micStatus: "Microphone status is loading...",
   hotkeyRegistered: false,
   hotkeyStatus: `${baseSettings.triggerLabel} is getting ready.`,
@@ -293,7 +293,7 @@ function normalizeClientTimings(value) {
 }
 
 function logTiming(event, payload) {
-  console.info(`Voice Flow timing ${JSON.stringify({
+  console.info(`VoiceKit timing ${JSON.stringify({
     event,
     scope: "desktop-main",
     ...payload
@@ -683,7 +683,7 @@ function createPetWindow() {
     resizable: false,
     show: false,
     skipTaskbar: true,
-    title: "Voice Flow",
+    title: "VoiceKit",
     transparent: true,
     vibrancy: "hud",
     webPreferences: {
@@ -714,7 +714,7 @@ function createDashboardWindow() {
     minHeight: 640,
     minWidth: 460,
     show: false,
-    title: "Voice Flow Dashboard",
+    title: "VoiceKit Dashboard",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -810,7 +810,7 @@ async function callDictationApi(payload) {
     });
   } catch (error) {
     const message = error instanceof Error && error.message ? error.message : "Unknown network error.";
-    throw new Error(`Could not reach the Voice Flow API at ${apiBaseUrl}. Make sure the backend is running and the API Base URL is correct. (${message})`);
+    throw new Error(`Could not reach the VoiceKit API at ${apiBaseUrl}. Make sure the backend is running and the API Base URL is correct. (${message})`);
   }
 
   if (!response.ok) {
@@ -923,7 +923,7 @@ async function callDictationApiStream(payload, { onEvent } = {}) {
     });
   } catch (error) {
     const message = error instanceof Error && error.message ? error.message : "Unknown network error.";
-    throw new Error(`Could not reach the Voice Flow API at ${apiBaseUrl}. Make sure the backend is running and the API Base URL is correct. (${message})`);
+    throw new Error(`Could not reach the VoiceKit API at ${apiBaseUrl}. Make sure the backend is running and the API Base URL is correct. (${message})`);
   }
 
   if (!response.ok) {
@@ -946,7 +946,7 @@ async function callDictationApiStream(payload, { onEvent } = {}) {
     }
 
     if (event.type === "dictation.error") {
-      streamedError = event.error || "Voice Flow streaming request failed.";
+      streamedError = event.error || "VoiceKit streaming request failed.";
     }
   });
 
@@ -955,7 +955,7 @@ async function callDictationApiStream(payload, { onEvent } = {}) {
   }
 
   if (!finalResult) {
-    throw new Error("Voice Flow API stream ended before returning a final result.");
+    throw new Error("VoiceKit API stream ended before returning a final result.");
   }
 
   return finalResult;
@@ -996,7 +996,7 @@ function ensureConfiguredHotkeyRegistered() {
     );
 
     console.log(
-      `Voice Flow ${fallbackHotkeyActive ? "fallback hotkey" : "hotkey"} triggered (${baseSettings.hotkey}) at ${triggeredAt}`
+      `VoiceKit ${fallbackHotkeyActive ? "fallback hotkey" : "hotkey"} triggered (${baseSettings.hotkey}) at ${triggeredAt}`
     );
 
     void handleConfiguredHotkeyTrigger();
@@ -1166,7 +1166,7 @@ async function triggerDictationStart({ holdToTalk = false, source = "hotkey" } =
   broadcastUiState({
     isRecording: false,
     mode: "arming",
-    status: holdToTalk ? "Getting the microphone ready..." : "Waking up Voice Flow..."
+    status: holdToTalk ? "Getting the microphone ready..." : "Waking up VoiceKit..."
   });
 
   lastCapturedContext = await safeGetActiveContext();
@@ -1205,7 +1205,7 @@ function handleFnKeyListenerMessage(rawLine) {
   try {
     payload = JSON.parse(rawLine);
   } catch {
-    console.warn(`Voice Flow hold listener emitted invalid JSON: ${rawLine}`);
+    console.warn(`VoiceKit hold listener emitted invalid JSON: ${rawLine}`);
     return;
   }
 
@@ -1237,7 +1237,7 @@ function handleFnKeyListenerMessage(rawLine) {
 
     fnHoldPressed = true;
     const triggeredAt = recordTriggerActivity(payload.message || getHoldListenerActiveMessage());
-    console.log(`Voice Flow ${configuredHoldKey} trigger down at ${triggeredAt}`);
+    console.log(`VoiceKit ${configuredHoldKey} trigger down at ${triggeredAt}`);
     void triggerDictationStart({
       holdToTalk: true,
       source: "fn_hold"
@@ -1251,7 +1251,7 @@ function handleFnKeyListenerMessage(rawLine) {
     }
 
     fnHoldPressed = false;
-    console.log(`Voice Flow ${configuredHoldKey} trigger released`);
+    console.log(`VoiceKit ${configuredHoldKey} trigger released`);
 
     if (uiState.isRecording) {
       triggerDictationStop({
@@ -1273,7 +1273,7 @@ async function startFnKeyListener() {
   } catch (error) {
     const message = error instanceof Error ? error.message : `${getHoldListenerPrefix()} setup failed.`;
 
-    console.error(`Voice Flow failed to prepare ${getHoldListenerPrefix()}: ${message}`);
+    console.error(`VoiceKit failed to prepare ${getHoldListenerPrefix()}: ${message}`);
     activateHotkeyFallback(`${getHoldListenerPrefix()} setup failed: ${message}`);
     return;
   }
@@ -1294,7 +1294,7 @@ async function startFnKeyListener() {
   });
 
   child.stderr.on("data", (chunk) => {
-    console.warn(`Voice Flow hold listener stderr: ${chunk.toString().trim()}`);
+    console.warn(`VoiceKit hold listener stderr: ${chunk.toString().trim()}`);
   });
 
   child.on("exit", (code, signal) => {
@@ -1348,7 +1348,7 @@ function registerHotkey() {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown hotkey registration error.";
 
-    console.error(`Voice Flow failed to register hotkey ${baseSettings.hotkey}: ${message}`);
+    console.error(`VoiceKit failed to register hotkey ${baseSettings.hotkey}: ${message}`);
     broadcastUiState({
       hotkeyRegistered: false,
       hotkeyStatus: `Hotkey registration failed: ${message}`
@@ -1367,11 +1367,11 @@ function registerHotkey() {
   });
 
   if (isRegistered) {
-    console.log(`Voice Flow registered hotkey ${baseSettings.hotkey}`);
+    console.log(`VoiceKit registered hotkey ${baseSettings.hotkey}`);
     return;
   }
 
-  console.warn(`Voice Flow could not register hotkey ${baseSettings.hotkey}`);
+  console.warn(`VoiceKit could not register hotkey ${baseSettings.hotkey}`);
 }
 
 function initializeAutoUpdates() {
@@ -1435,8 +1435,8 @@ function initializeAutoUpdates() {
       buttons: ["Restart to Install", "Later"],
       cancelId: 1,
       defaultId: 0,
-      detail: `Voice Flow ${info.version} has finished downloading. Restart whenever you're ready to install it.`,
-      message: "A new Voice Flow beta is ready.",
+      detail: `VoiceKit ${info.version} has finished downloading. Restart whenever you're ready to install it.`,
+      message: "A new VoiceKit beta is ready.",
       type: "info"
     });
 
@@ -1560,7 +1560,7 @@ ipcMain.handle("flow:get-settings", async () => getSettingsSnapshot());
 ipcMain.handle("flow:save-api-config", async (_event, payload) => {
   const snapshot = await desktopConfigStore.save(payload);
   broadcastSettings();
-  refreshIdleUiState("API connected. Voice Flow is ready.");
+  refreshIdleUiState("API connected. VoiceKit is ready.");
   return snapshot;
 });
 ipcMain.handle("flow:reset-api-config", async () => {
@@ -1626,8 +1626,8 @@ ipcMain.handle("flow:move-to-applications", async () => {
     cancelId: 1,
     defaultId: 0,
     detail:
-      "Installing Voice Flow in Applications makes macOS Accessibility permission far more stable, especially after app rebuilds and relaunches.",
-    message: "Move Voice Flow to Applications?",
+      "Installing VoiceKit in Applications makes macOS Accessibility permission far more stable, especially after app rebuilds and relaunches.",
+    message: "Move VoiceKit to Applications?",
     type: "question"
   });
 
@@ -1778,7 +1778,7 @@ ipcMain.handle("flow:process-dictation", async (_event, payload) => {
             status:
               event.type === "polish.completed" || event.type === "polish.disabled"
                 ? pasteState.stage === "raw"
-                  ? "Polished result ready in Voice Flow."
+                  ? "Polished result ready in VoiceKit."
                   : "Finishing up..."
                 : pasteState.stage === "raw"
                   ? "Raw transcript pasted. Polishing in the background..."
@@ -1807,7 +1807,7 @@ ipcMain.handle("flow:process-dictation", async (_event, payload) => {
       ? pasteError
       : pasteState.stage === "raw"
         ? polishedDiffersFromRaw
-          ? "Raw transcript pasted. Polished result is ready in Voice Flow."
+          ? "Raw transcript pasted. Polished result is ready in VoiceKit."
           : "Raw transcript pasted into your app."
         : baseSettings.autoPaste
           ? "Pasted back into your app."

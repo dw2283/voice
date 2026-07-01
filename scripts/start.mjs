@@ -98,8 +98,8 @@ const desktopPid = await spawnDetached("desktop", electronBin, ["src/main.mjs"],
 });
 
 if (stoppedCount > 0) {
-  console.log(`Stopped ${stoppedCount} stale Voice Flow process${stoppedCount === 1 ? "" : "es"}.`);
+  console.log(`Stopped ${stoppedCount} stale VoiceKit process${stoppedCount === 1 ? "" : "es"}.`);
 }
-console.log(`Voice Flow API started: ${apiPid}`);
-console.log(`Voice Flow desktop started: ${desktopPid}`);
+console.log(`VoiceKit API started: ${apiPid}`);
+console.log(`VoiceKit desktop started: ${desktopPid}`);
 console.log(`Logs: ${logsDir}`);

@@ -7,7 +7,7 @@ import { repoRoot } from "./process-utils.mjs";
 
 const execFileAsync = promisify(execFile);
 const apiUrl = process.env.FLOW_API_BASE_URL ?? "http://127.0.0.1:8000";
-const expectedPhrase = "Hello from Voice Flow";
+const expectedPhrase = "Hello from VoiceKit";
 
 async function commandExists(command) {
   try {
@@ -36,7 +36,7 @@ async function createTestAudio() {
   const aiffPath = path.join(tempDir, "input.aiff");
   const wavPath = path.join(tempDir, "input.wav");
 
-  await execFileAsync("say", ["-o", aiffPath, "Hello from Voice Flow. Please clean up this dictated sentence."]);
+  await execFileAsync("say", ["-o", aiffPath, "Hello from VoiceKit. Please clean up this dictated sentence."]);
   await execFileAsync("afconvert", ["-f", "WAVE", "-d", "LEI16@16000", aiffPath, wavPath]);
 
   return {
@@ -55,7 +55,7 @@ async function postDictation(audioBase64) {
       audioBase64,
       context: {
         appName: "TextEdit",
-        dictionaryHints: ["Voice Flow"],
+        dictionaryHints: ["VoiceKit"],
         platform: "flow-smoke-test",
         selectedText: "",
         surroundingText: ""

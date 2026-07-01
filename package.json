@@ -1,6 +1,6 @@
 {
-  "name": "voice-flow-clone",
-  "description": "Mac-first Voice Flow clone with Electron desktop capture and a dictation API.",
+  "name": "open-voice-flow",
+  "description": "VoiceKit is a Mac-first dictation app with Electron desktop capture and a streaming transcription API.",
   "private": true,
   "author": "dw2283",
   "type": "module",

@@ -42,7 +42,7 @@ async function ensureEnvFile() {
   }
 
   await fs.copyFile(examplePath, envPath);
-  record("warn", ".env created", "Fill OPENAI_API_KEY before starting Voice Flow.");
+  record("warn", ".env created", "Fill OPENAI_API_KEY before starting VoiceKit.");
 }
 
 async function ensureNodeDeps() {

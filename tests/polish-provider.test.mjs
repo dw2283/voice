@@ -7,7 +7,7 @@ function buildRequest(debugTranscript) {
     audioBase64: "",
     context: {
       appName: "Claude",
-      dictionaryHints: ["Voice Flow"],
+      dictionaryHints: ["VoiceKit"],
       platform: "test",
       selectedText: "",
       surroundingText: ""

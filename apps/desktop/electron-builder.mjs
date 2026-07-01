@@ -8,8 +8,8 @@ const repoRoot = path.resolve(__dirname, "../..");
 const desktopPackageJson = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8"));
 
 export default {
-  appId: "com.dw2283.voiceflow",
-  productName: "Voice Flow",
+  appId: "com.dw2283.voicekit",
+  productName: "VoiceKit",
   artifactName: "${productName}-${version}-${arch}.${ext}",
   directories: {
     buildResources: path.join(__dirname, "buildResources"),
@@ -29,8 +29,8 @@ export default {
   ],
   extraMetadata: {
     main: "apps/desktop/src/main.mjs",
-    name: "voice-flow",
-    productName: "Voice Flow",
+    name: "voicekit",
+    productName: "VoiceKit",
     version: desktopPackageJson.version
   },
   publish: [
@@ -62,7 +62,7 @@ export default {
     entitlements: path.join(__dirname, "entitlements.mac.plist"),
     entitlementsInherit: path.join(__dirname, "entitlements.mac.plist"),
     extendInfo: {
-      NSMicrophoneUsageDescription: "Voice Flow records short dictation clips so it can transcribe and paste them."
+      NSMicrophoneUsageDescription: "VoiceKit records short dictation clips so it can transcribe and paste them."
     }
   }
 };

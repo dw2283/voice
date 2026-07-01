@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: voice-flow-api
+    name: voicekit-api
     runtime: node
     plan: starter
     rootDir: .

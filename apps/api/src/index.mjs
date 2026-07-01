@@ -34,7 +34,7 @@ function createTraceId() {
 }
 
 function logTiming(event, payload) {
-  console.info(`Voice Flow timing ${JSON.stringify({
+  console.info(`VoiceKit timing ${JSON.stringify({
     event,
     scope: "api-server",
     ...payload
@@ -49,7 +49,7 @@ const provider = createProvider();
 
 if (typeof provider.warmup === "function") {
   void provider.warmup().catch((error) => {
-    console.warn("Voice Flow provider warmup failed:", error instanceof Error ? error.message : error);
+    console.warn("VoiceKit provider warmup failed:", error instanceof Error ? error.message : error);
   });
 }
 
@@ -183,7 +183,7 @@ const server = http.createServer(async (request, response) => {
 
       if (isApiAuthEnabled() && !isAuthorizedBearerToken(request.headers.authorization)) {
         writeJson(response, 401, {
-          error: "Missing or invalid Voice Flow API token."
+          error: "Missing or invalid VoiceKit API token."
         });
         return;
       }
@@ -281,5 +281,5 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`Voice Flow API listening on http://${host}:${port}`);
+  console.log(`VoiceKit API listening on http://${host}:${port}`);
 });

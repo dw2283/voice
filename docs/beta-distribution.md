@@ -1,11 +1,11 @@
-# Voice Flow Beta Distribution
+# VoiceKit Beta Distribution
 
-This is the smallest reliable way to let other people try Voice Flow without asking them to install Python, Whisper, or a local backend.
+This is the smallest reliable way to let other people try VoiceKit without asking them to install Python, Whisper, or a local backend.
 
 ## Architecture
 
 - Desktop app: records audio, shows the overlay, and pastes text back into the current Mac app.
-- Hosted API: receives audio, validates the Voice Flow token, calls OpenAI transcription, optionally runs polish, and returns the final text.
+- Hosted API: receives audio, validates the VoiceKit token, calls OpenAI transcription, optionally runs polish, and returns the final text.
 
 The desktop app is not enough by itself. Testers need a reachable API route.
 
@@ -39,21 +39,21 @@ Send each tester:
 
 - the Mac app download link
 - the hosted `API Base URL`
-- their `Voice Flow API Token`
+- their `VoiceKit API Token`
 - a 30-second setup note
 
 Suggested tester note:
 
-1. Open `Voice Flow.app`.
+1. Open `VoiceKit.app`.
 2. Open `Settings`.
 3. Paste the `API Base URL`.
-4. Paste the `Voice Flow API Token`.
+4. Paste the `VoiceKit API Token`.
 5. Allow microphone access.
 6. Allow Accessibility access if you want `fn` hold and automatic paste-back.
 
 ## Support Checklist
 
-If a tester says Voice Flow is red or does nothing:
+If a tester says VoiceKit is red or does nothing:
 
 - confirm they saved the right `API Base URL`
 - confirm their token matches `FLOW_API_TOKENS`

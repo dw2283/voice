@@ -123,7 +123,7 @@ async function runPreflight() {
     const output = [error.stdout, error.stderr].filter(Boolean).join("\n").trim();
     const detail = output ? `\n\n${output}` : "";
 
-    throw new Error(`Voice Flow is not ready for the focus smoke test. Run \`npm run voice:restart\`, then try again.${detail}`);
+    throw new Error(`VoiceKit is not ready for the focus smoke test. Run \`npm run voice:restart\`, then try again.${detail}`);
   }
 
   if (!(await commandExists("osascript"))) {
@@ -167,9 +167,9 @@ async function main() {
     throw new Error("Focus smoke test is macOS-only because it uses TextEdit, System Events, and the desktop trigger.");
   }
 
-  console.log("Checking Voice Flow health before focus smoke...");
+  console.log("Checking VoiceKit health before focus smoke...");
   await runPreflight();
-  console.log("PASS Preflight: Voice Flow is running.");
+  console.log("PASS Preflight: VoiceKit is running.");
   console.log("");
 
   if (preflightOnly) {
@@ -214,7 +214,7 @@ async function main() {
     });
     throw new Error(
       [
-        `Focus smoke could not observe Voice Flow listening after an AppleScript-generated ${triggerLabel}.`,
+        `Focus smoke could not observe VoiceKit listening after an AppleScript-generated ${triggerLabel}.`,
         "macOS or Electron may ignore synthetic trigger events.",
         "Use `npm run voice:manual-check` with a physical keypress for authoritative evidence.",
         error instanceof Error ? error.message : String(error)

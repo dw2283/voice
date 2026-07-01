@@ -135,7 +135,7 @@ test("packaged desktop config store migrates existing Electron settings on first
   await withTempDir(async (tempDir) => {
     const parentDir = path.join(tempDir, "Application Support");
     const legacyDir = path.join(parentDir, "Electron");
-    const packagedDir = path.join(parentDir, "Voice Flow");
+    const packagedDir = path.join(parentDir, "VoiceKit");
     const safeStorage = createFakeSafeStorage();
 
     await fs.mkdir(legacyDir, { recursive: true });

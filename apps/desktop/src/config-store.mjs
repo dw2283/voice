@@ -21,7 +21,7 @@ function defaultApiToken(env, isPackaged) {
 }
 
 function buildSecureStorageMessage() {
-  return "Voice Flow needs macOS secure storage before it can save an API token on this Mac.";
+  return "VoiceKit needs macOS secure storage before it can save an API token on this Mac.";
 }
 
 async function fileExists(filePath) {

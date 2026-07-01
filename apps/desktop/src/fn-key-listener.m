@@ -253,7 +253,7 @@ int main(int argc, const char *argv[]) {
         @"event": @"status",
         @"accessibilityTrusted": @NO,
         @"holdKey": gHoldKeyName,
-        @"message": [NSString stringWithFormat:@"%@ could not create a system event tap. Re-enable Accessibility permission for Voice Flow.", holdListenerPrefix()],
+        @"message": [NSString stringWithFormat:@"%@ could not create a system event tap. Re-enable Accessibility permission for VoiceKit.", holdListenerPrefix()],
         @"timestamp": @([[NSDate date] timeIntervalSince1970])
       });
       return 1;

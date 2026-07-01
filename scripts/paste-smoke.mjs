@@ -74,7 +74,7 @@ if (!(await commandExists("osascript"))) {
   throw new Error("macOS command `osascript` is required for the paste smoke test.");
 }
 
-const marker = `Voice Flow paste smoke ${new Date().toISOString()}`;
+const marker = `VoiceKit paste smoke ${new Date().toISOString()}`;
 
 await prepareTextEditDocument();
 

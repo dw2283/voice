@@ -1,4 +1,4 @@
-# Voice Flow
+# VoiceKit
 
 Mac-first clone of the core Wispr Flow experience:
 
@@ -20,7 +20,7 @@ npm run voice:restart
 
 `voice:setup` verifies local dependencies, builds the native hold-key listener helper, and creates `.env` from `.env.example` if it is missing. On a fresh machine, run `npm run voice:setup -- --install` to install Node dependencies. Python is only required when you intentionally clear `FLOW_TRANSCRIBE_MODEL` and fall back to local Whisper.
 
-`voice:restart` stops stale Voice Flow API, Electron, and local transcription worker processes, then starts one clean backend and one clean desktop app. Logs go to `.cache/logs`.
+`voice:restart` stops stale VoiceKit API, Electron, and local transcription worker processes, then starts one clean backend and one clean desktop app. Logs go to `.cache/logs`.
 
 Use modifier-hold mode on macOS as the default trigger: hold the key configured by `FLOW_HOLD_KEY` to dictate, then release it to stop and paste. The default is `control`; if you prefer the keyboard function key behavior, switch it back to `fn`. If you prefer a regular shortcut instead, switch to `FLOW_TRIGGER_MODE=hotkey` and set `FLOW_HOTKEY`. Right-click the tiny overlay to open the dashboard.
 
@@ -34,7 +34,7 @@ The local `.env` file is gitignored and stores the OpenAI-compatible endpoint, m
 - transcription: OpenAI-compatible model, default `gpt-4o-mini-transcribe`
 - polish: OpenAI-compatible `gpt-4.1-mini` when `FLOW_POLISH_ENABLED=true`
 - paste-back: macOS clipboard + Command-V into the previously active app
-- desktop auth: first-run API base URL + Voice Flow service token, stored in the app's local config and macOS secure storage
+- desktop auth: first-run API base URL + VoiceKit service token, stored in the app's local config and macOS secure storage
 - API auth: `/v1/dictate` requires `Authorization: Bearer ...` when `FLOW_API_TOKENS` is configured
 
 Set `FLOW_POLISH_ENABLED=false` to skip the AI polish pass entirely. In that mode, the API still transcribes audio, returns `polishedText` equal to `rawTranscript`, and reports `modelInfo.polish` as `disabled`.
@@ -43,11 +43,11 @@ If you want local Whisper instead of cloud transcription, clear `FLOW_TRANSCRIBE
 
 ## Cloud Beta
 
-The fastest way to share Voice Flow with other people is to host `apps/api` on a public URL and treat the Mac app as a client.
+The fastest way to share VoiceKit with other people is to host `apps/api` on a public URL and treat the Mac app as a client.
 
 1. Deploy `apps/api` to Render or another public Node host.
 2. Set `OPENAI_API_KEY` plus one or more `FLOW_API_TOKENS` values on that hosted API.
-3. Send testers the packaged Mac app, the hosted `API Base URL`, and their Voice Flow token.
+3. Send testers the packaged Mac app, the hosted `API Base URL`, and their VoiceKit token.
 4. On first launch, they open Settings and save those two values.
 
 `render.yaml` already includes the reference Render service with cloud defaults:
@@ -57,7 +57,7 @@ The fastest way to share Voice Flow with other people is to host `apps/api` on a
 - `FLOW_POLISH_ENABLED=true`
 - `FLOW_POLISH_MODEL=gpt-4.1-mini`
 
-Do not ship your raw OpenAI key inside the desktop app. Testers should only enter the hosted API route and the Voice Flow service token.
+Do not ship your raw OpenAI key inside the desktop app. Testers should only enter the hosted API route and the VoiceKit service token.
 
 See [docs/beta-distribution.md](/Users/dingwang/Documents/voice/docs/beta-distribution.md) for the exact deployment and tester handoff steps.
 

@@ -110,8 +110,8 @@ function updateConnectionPanel() {
   const configured = Boolean(settings?.apiConfigured);
   connectionStatusEl.dataset.ready = String(configured);
   connectionStatusEl.textContent = configured
-    ? "Voice Flow is connected and ready to dictate."
-    : "Voice Flow needs an API route and token from your beta host before dictation can start.";
+    ? "VoiceKit is connected and ready to dictate."
+    : "VoiceKit needs an API route and token from your beta host before dictation can start.";
 
   savedRouteValueEl.textContent = settings?.apiBaseUrl || "Not configured.";
   savedTokenValueEl.textContent = settings?.hasApiToken ? settings.apiTokenMasked || "Stored securely." : "Not configured.";
@@ -172,7 +172,7 @@ function updateTriggerDiagnosticsPanel() {
     : `Development builds move around often, so ${holdKeyName} permission is less stable than an installed packaged app.`;
 
   restartHintEl.textContent = stableInstall
-    ? `If you just changed Accessibility permission, use refresh once so Voice Flow can re-check ${holdKeyName} immediately.`
+    ? `If you just changed Accessibility permission, use refresh once so VoiceKit can re-check ${holdKeyName} immediately.`
     : `Install this packaged build in Applications first, then re-enable Accessibility if ${holdKeyName} keeps falling back.`;
 
   triggerDetailTextEl.textContent = uiState?.hotkeyStatus || "Waiting for trigger diagnostics.";
@@ -413,7 +413,7 @@ async function init() {
 
   moveToApplicationsButton.addEventListener("click", () => {
     void moveToApplications().catch((error) => {
-      settingsErrorTextEl.textContent = error instanceof Error ? error.message : "Moving Voice Flow to Applications failed.";
+      settingsErrorTextEl.textContent = error instanceof Error ? error.message : "Moving VoiceKit to Applications failed.";
       updateTriggerDiagnosticsPanel();
     });
   });

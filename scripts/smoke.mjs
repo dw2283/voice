@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const apiUrl = process.env.FLOW_API_BASE_URL ?? "http://127.0.0.1:8000";
-const expectedPhrase = "Hello from Voice Flow";
+const expectedPhrase = "Hello from VoiceKit";
 
 async function commandExists(command) {
   try {
@@ -26,7 +26,7 @@ async function createTestAudio() {
   const aiffPath = path.join(tempDir, "input.aiff");
   const wavPath = path.join(tempDir, "input.wav");
 
-  await execFileAsync("say", ["-o", aiffPath, "Hello from Voice Flow. Please clean up this dictated sentence."]);
+  await execFileAsync("say", ["-o", aiffPath, "Hello from VoiceKit. Please clean up this dictated sentence."]);
   await execFileAsync("afconvert", ["-f", "WAVE", "-d", "LEI16@16000", aiffPath, wavPath]);
 
   return {
@@ -44,8 +44,8 @@ async function postDictation(audioBase64) {
     body: JSON.stringify({
       audioBase64,
       context: {
-        appName: "Voice Flow Smoke Test",
-        dictionaryHints: ["Voice Flow"],
+        appName: "VoiceKit Smoke Test",
+        dictionaryHints: ["VoiceKit"],
         platform: "smoke-test",
         selectedText: "",
         surroundingText: ""

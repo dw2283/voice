@@ -99,7 +99,7 @@ async function runPreflight() {
     const output = [error.stdout, error.stderr].filter(Boolean).join("\n").trim();
     const detail = output ? `\n\n${output}` : "";
 
-    throw new Error(`Voice Flow is not ready for the hotkey smoke test. Run \`npm run voice:restart\`, then try again.${detail}`);
+    throw new Error(`VoiceKit is not ready for the hotkey smoke test. Run \`npm run voice:restart\`, then try again.${detail}`);
   }
 
   if (!(await commandExists("say"))) {
@@ -157,9 +157,9 @@ async function main() {
     throw new Error("macOS command `osascript` is required for the hotkey smoke test.");
   }
 
-  console.log("Checking Voice Flow health before hotkey smoke...");
+  console.log("Checking VoiceKit health before hotkey smoke...");
   await runPreflight();
-  console.log("PASS Preflight: Voice Flow is running.");
+  console.log("PASS Preflight: VoiceKit is running.");
   console.log("");
 
   if (preflightOnly) {
@@ -179,7 +179,7 @@ async function main() {
 
   await prepareTextEditDocument();
 
-  console.log("Trigger Voice Flow smoke test");
+  console.log("Trigger VoiceKit smoke test");
   console.log(`Speaking through macOS say: "${expectedPhrase}"`);
   console.log(`This uses the configured trigger (${triggerLabel}). Keep speakers and microphone usable.`);
   console.log("");

@@ -25,7 +25,7 @@ function roundTimingMs(value) {
 }
 
 function logTiming(event, payload) {
-  console.info(`Voice Flow timing ${JSON.stringify({
+  console.info(`VoiceKit timing ${JSON.stringify({
     event,
     scope: "api-provider",
     ...payload

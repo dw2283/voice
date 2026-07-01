@@ -7,7 +7,7 @@ async function stopVoiceProcesses() {
   });
 
   if (candidates.length === 0) {
-    console.log("No Voice Flow processes are running.");
+    console.log("No VoiceKit processes are running.");
     return;
   }
 
@@ -25,7 +25,7 @@ async function stopVoiceProcesses() {
     await killPid(processInfo.pid, "SIGKILL");
   }
 
-  console.log(`Stopped ${candidates.length} Voice Flow process${candidates.length === 1 ? "" : "es"}.`);
+  console.log(`Stopped ${candidates.length} VoiceKit process${candidates.length === 1 ? "" : "es"}.`);
 }
 
 await stopVoiceProcesses();

@@ -106,7 +106,7 @@ async function runPreflight() {
     const output = [error.stdout, error.stderr].filter(Boolean).join("\n").trim();
     const detail = output ? `\n\n${output}` : "";
 
-    throw new Error(`Voice Flow is not ready for the manual check. Run \`npm run voice:restart\`, then try again.${detail}`);
+    throw new Error(`VoiceKit is not ready for the manual check. Run \`npm run voice:restart\`, then try again.${detail}`);
   }
 }
 
@@ -160,9 +160,9 @@ async function main() {
     throw new Error("macOS command `osascript` is required for the manual full-loop check.");
   }
 
-  console.log("Checking Voice Flow health before opening TextEdit...");
+  console.log("Checking VoiceKit health before opening TextEdit...");
   await runPreflight();
-  console.log("PASS Preflight: Voice Flow is running.");
+  console.log("PASS Preflight: VoiceKit is running.");
   console.log("");
 
   if (preflightOnly) {
@@ -176,19 +176,19 @@ async function main() {
 
   await prepareTextEditDocument();
 
-  console.log("Manual Voice Flow full-loop check");
+  console.log("Manual VoiceKit full-loop check");
   console.log("");
   console.log("1. Keep the new blank TextEdit document focused.");
   if (triggerMode === "fn_hold") {
     console.log(`2. Hold ${holdKeyInstruction} while you speak, then release it to stop.`);
   } else {
-    console.log(`2. Press ${hotkeyLabel} once to start Voice Flow.`);
+    console.log(`2. Press ${hotkeyLabel} once to start VoiceKit.`);
   }
   console.log(`3. Say: \"${expectedPhrase}\"`);
   console.log(
     triggerMode === "fn_hold"
-      ? `4. Release ${holdKeyInstruction}; Voice Flow should stop and paste automatically.`
-      : "4. Pause briefly; Voice Flow should stop and paste automatically."
+      ? `4. Release ${holdKeyInstruction}; VoiceKit should stop and paste automatically.`
+      : "4. Pause briefly; VoiceKit should stop and paste automatically."
   );
   if (waitForEnter) {
     console.log("5. Return here and press Enter.");
