@@ -1,105 +1,123 @@
 # VoiceKit
 
-Mac-first clone of the core Wispr Flow experience:
+> Speak naturally. Write everywhere.
 
-- configurable modifier hold-to-talk trigger plus an on-screen fallback
-- short dictation session
-- cloud speech transcription with optional AI polish
-- optional AI polish pass
-- paste output text back into the active app
-- packaged Mac beta release pipeline with signing, notarization, and auto-update hooks
+VoiceKit is an open-source AI communication layer for macOS.
 
-The main experience is a tiny AI voice overlay. Hold your configured modifier key, speak, then release it, and the output text is pasted back into the app you were using. The overlay is an audio-reactive orb rather than a cartoon pet, so it behaves more like a focused voice input tool.
+Hold a key, speak naturally, and VoiceKit turns your speech into clean, paste-ready text for the app you are already using. Instead of stopping at raw transcription, it can refine your words, preserve your intent, and fit the moment faster than manual typing.
 
-## Run It
+```text
+Speak -> Understand -> Rewrite -> Paste Anywhere
+```
+
+VoiceKit works best anywhere you already write:
+
+- Cursor
+- ChatGPT
+- Slack
+- Mail
+- Notion
+- Chrome
+- Terminal
+
+## Why VoiceKit?
+
+Most dictation tools stop here:
+
+```text
+Speech -> Text
+```
+
+VoiceKit keeps going:
+
+```text
+Speech -> Understanding -> Rewrite -> Paste Anywhere
+```
+
+- `Anywhere`: hold a key, talk, and paste polished text back into the active macOS app.
+- `Open`: use a hosted API, local development, OpenAI-compatible backends, or local Whisper fallback.
+- `Extensible`: providers, prompts, context handling, triggers, and desktop behaviors are all editable.
+- `Developer-friendly`: readable source, fast local loop, packaged Mac beta flow, and no black-box client lock-in.
+
+## Quick Start
 
 ```sh
+npm install
 npm run voice:setup
 npm run voice:restart
 ```
 
-`voice:setup` verifies local dependencies, builds the native hold-key listener helper, and creates `.env` from `.env.example` if it is missing. On a fresh machine, run `npm run voice:setup -- --install` to install Node dependencies. Python is only required when you intentionally clear `FLOW_TRANSCRIBE_MODEL` and fall back to local Whisper.
+Then:
 
-`voice:restart` stops stale VoiceKit API, Electron, and local transcription worker processes, then starts one clean backend and one clean desktop app. Logs go to `.cache/logs`.
+1. Launch the desktop app.
+2. Hold your configured key. The default is `control`.
+3. Speak naturally.
+4. Release the key and let VoiceKit paste the result back.
 
-Use modifier-hold mode on macOS as the default trigger: hold the key configured by `FLOW_HOLD_KEY` to dictate, then release it to stop and paste. The default is `control`; if you prefer the keyboard function key behavior, switch it back to `fn`. If you prefer a regular shortcut instead, switch to `FLOW_TRIGGER_MODE=hotkey` and set `FLOW_HOTKEY`. Right-click the tiny overlay to open the dashboard.
+Right-click the small overlay to open the dashboard and connect a hosted API if needed.
 
-The default auto-stop timing is tuned for speed: `FLOW_AUTO_STOP_SILENCE_MS=650`, `FLOW_MIN_RECORDING_MS=700`, and `FLOW_AUTO_STOP_MAX_INITIAL_SILENCE_MS=8000`.
+## What You Get
 
-## Runtime Setup
-
-The local `.env` file is gitignored and stores the OpenAI-compatible endpoint, model names, bearer tokens, trigger mode, hold key, fallback hotkey, polish toggle, and OpenAI key. The current default flow is:
-
-- desktop capture: Electron + native microphone permission
-- transcription: OpenAI-compatible model, default `gpt-4o-mini-transcribe`
-- polish: OpenAI-compatible `gpt-4.1-mini` when `FLOW_POLISH_ENABLED=true`
-- paste-back: macOS clipboard + Command-V into the previously active app
-- desktop auth: first-run API base URL + VoiceKit service token, stored in the app's local config and macOS secure storage
-- API auth: `/v1/dictate` requires `Authorization: Bearer ...` when `FLOW_API_TOKENS` is configured
-
-Set `FLOW_POLISH_ENABLED=false` to skip the AI polish pass entirely. In that mode, the API still transcribes audio, returns `polishedText` equal to `rawTranscript`, and reports `modelInfo.polish` as `disabled`.
-
-If you want local Whisper instead of cloud transcription, clear `FLOW_TRANSCRIBE_MODEL` and keep the local Whisper settings. `voice:setup` and `voice:doctor` will then expect the workspace `.venv` and `faster-whisper`.
+- Hold-to-talk dictation with a tiny floating macOS overlay
+- Raw-first, polish-later streaming feedback for faster perceived response time
+- AI rewrite pass that can clean up speech without acting like a chat assistant
+- Paste-back into the previously active app
+- OpenAI-compatible cloud transcription by default
+- Optional local Whisper fallback for self-hosted setups
+- Packaged Mac beta builds with auto-update hooks
 
 ## Cloud Beta
 
-The fastest way to share VoiceKit with other people is to host `apps/api` on a public URL and treat the Mac app as a client.
+The simplest way to share VoiceKit is to host `apps/api` on a public URL and use the Mac app as the client.
 
 1. Deploy `apps/api` to Render or another public Node host.
-2. Set `OPENAI_API_KEY` plus one or more `FLOW_API_TOKENS` values on that hosted API.
+2. Set `OPENAI_API_KEY` and one or more `FLOW_API_TOKENS` values on the hosted API.
 3. Send testers the packaged Mac app, the hosted `API Base URL`, and their VoiceKit token.
-4. On first launch, they open Settings and save those two values.
-
-`render.yaml` already includes the reference Render service with cloud defaults:
-
-- `FLOW_TRANSCRIBE_PROVIDER=openai`
-- `FLOW_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe`
-- `FLOW_POLISH_ENABLED=true`
-- `FLOW_POLISH_MODEL=gpt-4.1-mini`
-
-Do not ship your raw OpenAI key inside the desktop app. Testers should only enter the hosted API route and the VoiceKit service token.
+4. Testers open Settings on first launch and save those two values.
 
 See [docs/beta-distribution.md](/Users/dingwang/Documents/voice/docs/beta-distribution.md) for the exact deployment and tester handoff steps.
 
-## Commands
+## Architecture
 
-- `npm run voice:setup`: verify local setup and create missing config files.
-- `npm run voice:doctor`: check local config, dependencies, processes, API health, and recent logs.
-- `npm run voice:focus-smoke`: best-effort focus probe for `FLOW_TRIGGER_MODE=hotkey`; if you stay on modifier-hold mode, use `voice:manual-check` instead.
-- `npm run voice:focus-smoke -- --preflight-only`: verify focus-smoke prerequisites without opening TextEdit or pressing the trigger.
-- `npm run voice:flow-smoke`: generate test audio, transcribe and polish it, paste the polished text into TextEdit, then read it back.
-- `npm run voice:hotkey-smoke`: best-effort automated trigger proxy for `FLOW_TRIGGER_MODE=hotkey`; still requires manual confirmation when speaker-to-microphone capture fails.
-- `npm run voice:hotkey-smoke -- --preflight-only`: verify trigger-smoke prerequisites without pressing the trigger or playing audio.
-- `npm run voice:manual-check`: open TextEdit, guide a real trigger + live microphone check, auto-detect the pasted result, then record pass or fail.
-- `npm run voice:manual-check -- --preflight-only`: verify the manual-check prerequisites without opening TextEdit.
-- `npm run voice:manual-check -- --wait-for-enter`: use the older manual confirmation flow if auto-detection is not desired.
-- `npm run voice:smoke`: generate a short test audio file and verify transcription plus polish end to end.
-- `npm run voice:paste-smoke`: paste a timestamp into a temporary TextEdit document through the same Electron paste helper.
+- `apps/desktop`: Electron shell for trigger handling, overlay UI, settings, and paste-back
+- `apps/api`: dictation API and provider layer
+- `packages/shared`: contracts, prompts, and shared runtime helpers
+- `scripts`: local setup, restart, smoke checks, and packaging helpers
+
+## Builder Notes
+
+VoiceKit is product-first on the surface, but still easy to inspect and extend underneath.
+
+- Desktop auth stores `API Base URL` in local app data and encrypts the API token with macOS secure storage when available.
+- Hosted API auth uses `Authorization: Bearer ...` when `FLOW_API_TOKENS` is configured.
+- `FLOW_POLISH_ENABLED=false` skips the AI rewrite pass and returns raw transcription as the final result.
+- Clearing `FLOW_TRANSCRIBE_MODEL` switches cloud transcription off and enables the local Whisper path instead.
+
+<details>
+<summary>Command reference</summary>
+
+### Main commands
+
+- `npm run voice:setup`: verify local setup, build the hold-key helper, and create missing config files.
+- `npm run voice:doctor`: inspect config, dependencies, API health, and recent logs.
 - `npm run voice:start`: start backend and desktop as background processes.
-- `npm run voice:stop`: stop backend, desktop, and lingering local transcription workers.
+- `npm run voice:stop`: stop backend, desktop, and local transcription workers.
 - `npm run voice:restart`: clean restart the full app.
 - `npm run dev:api`: run only the API in the foreground.
 - `npm run dev:desktop`: run only Electron in the foreground.
-- `npm run build:fn-listener`: compile the current-machine macOS helper used for modifier-hold detection.
-- `npm run release:mac`: build the signed/notarized Mac beta payloads when release secrets are configured.
-- `npm run release:mac:dir`: build an unpacked Apple Silicon Mac app directory for local packaging verification.
 
-`voice:manual-check` writes its latest result to `.cache/manual-check-result.json` so the final human check can be recorded without relying on chat history.
-`voice:focus-smoke` writes its latest result to `.cache/focus-smoke-result.json`; it only automates the fallback hotkey path, so modifier-hold mode still needs `voice:manual-check`.
-`voice:hotkey-smoke` writes its latest result to `.cache/hotkey-smoke-result.json`; it only automates the fallback hotkey path and may fail if macOS speaker audio is not captured by the microphone.
+### Validation commands
 
-## Repo layout
+- `npm run voice:smoke`: generate a short test audio file and verify transcription plus rewrite end to end.
+- `npm run voice:paste-smoke`: verify paste automation through the Electron paste helper.
+- `npm run voice:manual-check`: walk through a real trigger plus microphone check in TextEdit.
+- `npm run voice:focus-smoke`: best-effort focus probe for hotkey mode.
+- `npm run voice:hotkey-smoke`: best-effort automated trigger proxy for fallback hotkey mode.
 
-- `apps/desktop`: Electron shell for capture, status UI, and paste-back
-- `apps/api`: dictation API and model-provider adapter layer
-- `packages/shared`: runtime validation and prompt-building helpers
-- `scripts`: clean start/stop launchers for the local desktop stack
-- `docs`: product notes and architecture decisions
+### Build commands
 
-## Current state
+- `npm run build:fn-listener`: compile the macOS helper used for modifier-hold detection.
+- `npm run release:mac`: build Mac beta payloads when release secrets are configured.
+- `npm run release:mac:dir`: build an unpacked Apple Silicon app directory for local packaging checks.
 
-- `apps/api` serves the playground and health check on `http://127.0.0.1:8000/` by default, or any host you set with `FLOW_API_HOST`.
-- `apps/desktop` defaults to a hidden AI voice overlay and wakes near the active window, falling back to the mouse cursor when needed.
-- Browser `SpeechRecognition` is disabled for the desktop path; audio goes through the backend.
-- Desktop release builds currently target Apple Silicon first and resolve the hold-key listener from a bundled binary instead of compiling Objective-C at runtime.
-- `render.yaml` defines a reference Render deployment for the API, and `.github/workflows/release.yml` defines the Mac beta release pipeline.
+</details>
