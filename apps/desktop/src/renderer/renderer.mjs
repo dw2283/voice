@@ -11,12 +11,14 @@ const dashboardShellEl = document.getElementById("dashboardShell");
 const fnListenerValueEl = document.getElementById("fnListenerValue");
 const hideButton = document.getElementById("hideButton");
 const hotkeyValueEl = document.getElementById("hotkeyValue");
+const holdHintKeyEl = document.getElementById("holdHintKey");
 const micValueEl = document.getElementById("micValue");
 const modeValueEl = document.getElementById("modeValue");
 const moveToApplicationsButton = document.getElementById("moveToApplicationsButton");
 const polishedTextEl = document.getElementById("polishedText");
 const refreshTriggerButton = document.getElementById("refreshTriggerButton");
 const resetConfigButton = document.getElementById("resetConfigButton");
+const resultStatePillEl = document.getElementById("resultStatePill");
 const restartHintEl = document.getElementById("restartHint");
 const savedRouteValueEl = document.getElementById("savedRouteValue");
 const savedTokenValueEl = document.getElementById("savedTokenValue");
@@ -192,6 +194,50 @@ function updateButtons() {
   hideButton.disabled = !flowApi;
 }
 
+function updateHoldHint() {
+  if (!holdHintKeyEl || !settings) {
+    return;
+  }
+
+  if (settings.triggerMode !== "fn_hold") {
+    holdHintKeyEl.textContent = formatHotkey(settings.hotkey || "CommandOrControl+Shift+Space");
+    return;
+  }
+
+  const holdKeyLabel =
+    settings?.triggerDiagnostics?.holdKeyLabel ||
+    String(settings.triggerLabel || "Control (hold)").replace(" (hold)", "");
+
+  holdHintKeyEl.textContent = holdKeyLabel.toLowerCase();
+}
+
+function updateResultStatePill(mode) {
+  if (!resultStatePillEl) {
+    return;
+  }
+
+  if (mode === "listening") {
+    resultStatePillEl.dataset.state = "live";
+    resultStatePillEl.textContent = "Listening";
+    return;
+  }
+
+  if (mode === "processing" || mode === "arming") {
+    resultStatePillEl.dataset.state = "busy";
+    resultStatePillEl.textContent = "Working";
+    return;
+  }
+
+  if (mode === "error") {
+    resultStatePillEl.dataset.state = "error";
+    resultStatePillEl.textContent = "Needs attention";
+    return;
+  }
+
+  resultStatePillEl.dataset.state = "idle";
+  resultStatePillEl.textContent = "Paste ready";
+}
+
 function applyState(nextState) {
   uiState = nextState;
   if (dashboardShellEl) {
@@ -200,7 +246,10 @@ function applyState(nextState) {
   modeValueEl.textContent = formatMode(nextState.mode);
   micValueEl.textContent = nextState.micStatus || "Unknown";
   statusTextEl.textContent = nextState.status || "Waiting for the pet.";
-  polishedTextEl.textContent = nextState.polishedText || "No polished output yet.";
+  const polishedText = nextState.polishedText || "No polished output yet.";
+  polishedTextEl.textContent = polishedText;
+  polishedTextEl.dataset.empty = String(polishedText === "No polished output yet.");
+  updateResultStatePill(nextState.mode);
   updateTriggerDiagnosticsPanel();
   updateButtons();
 }
@@ -214,6 +263,7 @@ function applySettings(nextSettings, { preserveDraft = false } = {}) {
   }
 
   hotkeyValueEl.textContent = nextSettings.triggerLabel || formatHotkey(nextSettings.hotkey);
+  updateHoldHint();
   updateConnectionPanel();
   updateTriggerDiagnosticsPanel();
   updateButtons();
@@ -227,8 +277,11 @@ function setPreviewMode() {
   modeValueEl.textContent = "Preview";
   micValueEl.textContent = "Unavailable";
   hotkeyValueEl.textContent = "Unavailable";
+  holdHintKeyEl.textContent = "control";
   statusTextEl.textContent = "This dashboard renderer was opened directly in a browser tab. Launch the Electron desktop app instead.";
   polishedTextEl.textContent = "Start the desktop app with `npm run dev:desktop`.";
+  polishedTextEl.dataset.empty = "false";
+  updateResultStatePill("idle");
   connectionStatusEl.textContent = "Preview mode cannot save API settings.";
   secureStorageTextEl.textContent = "Secure token storage is only available inside the Electron app.";
   settingsErrorTextEl.textContent = "Electron IPC is unavailable in preview mode.";

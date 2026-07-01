@@ -948,6 +948,67 @@
       </section>
     </main>
 
+    
+    <script>
+      (() => {
+        const settings = {
+          apiConfigured: true,
+          apiBaseUrl: 'https://voice-flow-api-1ebf.onrender.com',
+          apiTokenMasked: 'vf-b••••-001',
+          hasApiToken: true,
+          secureStorageMessage: 'Tokens are stored securely on this Mac.',
+          settingsError: '',
+          hotkey: 'CommandOrControl+Shift+Space',
+          triggerLabel: 'Control (hold)',
+          triggerMode: 'fn_hold',
+          isPackaged: true,
+          canCheckForUpdates: true,
+          updateStatus: 'idle',
+          updateMessage: 'Ready to check for beta updates.',
+          updateVersion: '0.1.0-beta.2',
+          triggerDiagnostics: {
+            effectiveTriggerMode: 'fn_hold',
+            effectiveTriggerLabel: 'Control (hold)',
+            accessibilityTrusted: true,
+            fnListenerRunning: true,
+            holdKeyLabel: 'Control',
+            inApplicationsFolder: true,
+            canMoveToApplications: false,
+            packagedBundlePath: '/Applications/Voice Flow.app',
+            usingFallbackHotkey: false
+          }
+        };
+        const uiState = {
+          mode: 'done',
+          micStatus: 'Microphone access granted.',
+          status: 'Converted and ready to paste.',
+          polishedText: 'Plan a week-long Italy trip that favors historical sightseeing, leaves room for afternoon breaks, and ends each day with a memorable dinner before a little nightlife.',
+          isRecording: false
+        };
+        const settingsListeners = [];
+        const uiListeners = [];
+        window.flow = {
+          async getSettings() { return structuredClone(settings); },
+          async getUiState() { return structuredClone(uiState); },
+          onSettings(callback) { settingsListeners.push(callback); },
+          onUiState(callback) { uiListeners.push(callback); },
+          async saveApiConfig() { return structuredClone(settings); },
+          async resetApiConfig() { return structuredClone(settings); },
+          async checkForUpdates() { return structuredClone(settings); },
+          async refreshTriggerDiagnostics() { return structuredClone(settings); },
+          async openAccessibilitySettings() {},
+          async moveToApplications() {},
+          async installUpdate() {},
+          async hideDashboard() {},
+          async toggleDictation() {
+            uiState.mode = uiState.mode === 'listening' ? 'done' : 'listening';
+            uiState.status = uiState.mode === 'listening' ? 'Listening for your words...' : 'Converted and ready to paste.';
+            uiState.isRecording = uiState.mode === 'listening';
+            for (const listener of uiListeners) listener(structuredClone(uiState));
+          }
+        };
+      })();
+    </script>
     <script type="module" src="./renderer.mjs"></script>
   </body>
 </html>
