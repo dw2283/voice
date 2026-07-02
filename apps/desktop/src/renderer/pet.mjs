@@ -177,16 +177,51 @@ function getPreferredRecordingMimeType() {
   return candidates.find((mimeType) => MediaRecorder.isTypeSupported?.(mimeType)) || "";
 }
 
+function logMicrophone(event, payload = {}) {
+  console.info(`VoiceKit microphone ${JSON.stringify({
+    event,
+    scope: "desktop-renderer",
+    ...payload
+  })}`);
+}
+
 async function ensureMediaStream() {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error("Media capture is unavailable in this Electron build.");
   }
 
   if (!mediaStream) {
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: false
-    });
+    try {
+      logMicrophone("getUserMedia.begin");
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false
+      });
+      logMicrophone("getUserMedia.success", {
+        trackCount: mediaStream.getAudioTracks().length
+      });
+    } catch (error) {
+      const detail =
+        error instanceof Error
+          ? {
+              message: error.message,
+              name: error.name
+            }
+          : {
+              message: String(error ?? "unknown"),
+              name: "UnknownError"
+            };
+
+      logMicrophone("getUserMedia.failure", detail);
+
+      if (detail.name === "NotAllowedError") {
+        throw new Error(
+          "VoiceKit could not start the microphone. Open Settings, request microphone access again, then fully quit and reopen the app."
+        );
+      }
+
+      throw error;
+    }
   }
 
   return mediaStream;
@@ -323,6 +358,10 @@ async function startRecording({ holdToTalk = false } = {}) {
   startRecordingPromise = (async () => {
     try {
       const access = await flowApi.ensureMicrophoneAccess();
+      logMicrophone("recording.access", {
+        rawStatus: access.rawStatus,
+        status: access.status
+      });
 
       if (access.status !== "granted") {
         throw new Error(access.message || "Microphone access is required.");
@@ -339,6 +378,9 @@ async function startRecording({ holdToTalk = false } = {}) {
       const stream = await ensureMediaStream();
       chunks = [];
       const mimeType = getPreferredRecordingMimeType();
+      logMicrophone("recording.mediaRecorder", {
+        mimeType: mimeType || "default"
+      });
       mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
 
       mediaRecorder.ondataavailable = (event) => {

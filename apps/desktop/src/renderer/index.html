@@ -908,6 +908,11 @@
                   </div>
 
                   <div class="info-row">
+                    <span class="field-label">Microphone</span>
+                    <div class="value-pill" id="microphoneValue">Loading…</div>
+                  </div>
+
+                  <div class="info-row">
                     <span class="field-label">Hold Listener</span>
                     <div class="value-pill" id="fnListenerValue">Loading…</div>
                   </div>
@@ -916,9 +921,15 @@
                 <p class="microcopy diagnostic-note" id="triggerDetailText">Waiting for trigger diagnostics.</p>
 
                 <div class="settings-actions">
+                  <button class="secondary" id="microphoneActionButton" type="button">Request Microphone Access</button>
+                  <button class="secondary" id="microphoneSettingsButton" type="button">Open Microphone Settings</button>
                   <button class="secondary" id="accessibilityActionButton" type="button">Open Accessibility Settings</button>
                   <button class="secondary" id="refreshTriggerButton" type="button">Refresh Hold Diagnostics</button>
                 </div>
+
+                <p class="microcopy" id="microphoneHintText">
+                  VoiceKit needs a one-time macOS microphone approval before hold-to-talk can start recording.
+                </p>
 
                 <p class="microcopy" id="restartHint">
                   If you just changed Accessibility permission, refresh once so VoiceKit can re-check your hold key immediately.

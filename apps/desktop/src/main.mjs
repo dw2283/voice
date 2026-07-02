@@ -53,7 +53,6 @@ function getFnKeyListenerBinaryPath() {
 
 let petWindow = null;
 let dashboardWindow = null;
-let permissionsConfigured = false;
 let isQuitting = false;
 let petHideTimer = null;
 let lastCapturedContext = null;
@@ -300,6 +299,14 @@ function logTiming(event, payload) {
   })}`);
 }
 
+function logMicrophone(event, payload = {}) {
+  console.info(`VoiceKit microphone ${JSON.stringify({
+    event,
+    scope: "desktop-main",
+    ...payload
+  })}`);
+}
+
 function getNumberEnv(name, fallback, min, max) {
   const parsed = Number(process.env[name] ?? fallback);
 
@@ -316,6 +323,7 @@ function getSettingsSnapshot() {
     ...desktopConfigStore.getSnapshot(),
     canCheckForUpdates: app.isPackaged,
     isPackaged: app.isPackaged,
+    microphoneAccess: getMicrophoneAccessStatus(),
     triggerDiagnostics: getTriggerDiagnostics(),
     triggerFallbackActive: fallbackHotkeyActive,
     triggerLabel: getEffectiveTriggerLabel(),
@@ -370,13 +378,14 @@ function toMicrophoneState(rawStatus) {
 
   if (rawStatus === "denied" || rawStatus === "restricted") {
     return {
-      message: "Microphone access is denied. Enable it in System Settings > Privacy & Security > Microphone.",
+      message:
+        "Microphone access is denied. Enable VoiceKit in System Settings > Privacy & Security > Microphone, then fully quit and reopen the app.",
       status: "denied"
     };
   }
 
   return {
-    message: "Microphone access has not been granted yet.",
+    message: "Microphone access has not been granted yet. Request it from VoiceKit Settings first.",
     status: "pending"
   };
 }
@@ -403,24 +412,45 @@ async function ensureMicrophoneAccess() {
   }
 
   const current = getMicrophoneAccessStatus();
+  logMicrophone("ensure.begin", {
+    rawStatus: current.rawStatus,
+    status: current.status
+  });
 
   if (current.status !== "pending") {
+    logMicrophone("ensure.skip", {
+      rawStatus: current.rawStatus,
+      status: current.status
+    });
     return current;
   }
 
+  showDashboard();
+  broadcastUiState({
+    micStatus: current.message,
+    status: "Approve the macOS microphone prompt so VoiceKit can start recording."
+  });
+
   const granted = await systemPreferences.askForMediaAccess("microphone");
   const next = getMicrophoneAccessStatus();
-
-  return {
+  const result = {
     ...next,
     message: granted
       ? "Microphone access granted."
-      : "Microphone access was not granted. Enable it in System Settings > Privacy & Security > Microphone."
+      : "Microphone access was not granted. Enable VoiceKit in System Settings > Privacy & Security > Microphone, then fully quit and reopen the app."
   };
-}
+  logMicrophone("ensure.result", {
+    granted,
+    rawStatus: result.rawStatus,
+    status: result.status
+  });
 
-function isMediaPermission(permission) {
-  return permission === "media" || permission === "microphone" || permission === "audioCapture";
+  broadcastUiState({
+    micStatus: result.message
+  });
+  broadcastSettings();
+
+  return result;
 }
 
 function clearPetHideTimer() {
@@ -642,29 +672,7 @@ async function safeGetActiveContext() {
 }
 
 function configurePermissions(session) {
-  if (permissionsConfigured) {
-    return;
-  }
-
-  permissionsConfigured = true;
-
-  session.setPermissionCheckHandler((_webContents, permission) => {
-    if (isMediaPermission(permission)) {
-      return true;
-    }
-
-    return false;
-  });
-
-  session.setPermissionRequestHandler(async (_webContents, permission, callback) => {
-    if (!isMediaPermission(permission)) {
-      callback(false);
-      return;
-    }
-
-    const access = await ensureMicrophoneAccess();
-    callback(access.status === "granted");
-  });
+  void session;
 }
 
 function createPetWindow() {
@@ -1610,6 +1618,19 @@ ipcMain.handle("flow:open-accessibility-settings", async () => {
 
   try {
     await shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
+    return true;
+  } catch {
+    const errorMessage = await shell.openPath("/System/Applications/System Settings.app");
+    return errorMessage === "";
+  }
+});
+ipcMain.handle("flow:open-microphone-settings", async () => {
+  if (!isMac) {
+    return false;
+  }
+
+  try {
+    await shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone");
     return true;
   } catch {
     const errorMessage = await shell.openPath("/System/Applications/System Settings.app");

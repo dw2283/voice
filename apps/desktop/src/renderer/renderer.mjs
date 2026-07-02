@@ -14,6 +14,10 @@ const hotkeyValueEl = document.getElementById("hotkeyValue");
 const holdHintKeyEl = document.getElementById("holdHintKey");
 const micValueEl = document.getElementById("micValue");
 const modeValueEl = document.getElementById("modeValue");
+const microphoneActionButton = document.getElementById("microphoneActionButton");
+const microphoneHintTextEl = document.getElementById("microphoneHintText");
+const microphoneSettingsButton = document.getElementById("microphoneSettingsButton");
+const microphoneValueEl = document.getElementById("microphoneValue");
 const moveToApplicationsButton = document.getElementById("moveToApplicationsButton");
 const polishedTextEl = document.getElementById("polishedText");
 const refreshTriggerButton = document.getElementById("refreshTriggerButton");
@@ -156,8 +160,25 @@ function formatTriggerModeValue(mode) {
   return "Unknown";
 }
 
+function formatMicrophoneState(microphoneAccess) {
+  if (!microphoneAccess) {
+    return "Unknown";
+  }
+
+  if (microphoneAccess.status === "granted") {
+    return "Granted";
+  }
+
+  if (microphoneAccess.status === "denied") {
+    return "Not granted";
+  }
+
+  return "Pending";
+}
+
 function updateTriggerDiagnosticsPanel() {
   const diagnostics = settings?.triggerDiagnostics || {};
+  const microphoneAccess = settings?.microphoneAccess;
   const packaged = Boolean(settings?.isPackaged);
   const stableInstall = Boolean(diagnostics.inApplicationsFolder);
   const canMove = Boolean(diagnostics.canMoveToApplications);
@@ -167,6 +188,7 @@ function updateTriggerDiagnosticsPanel() {
   triggerModeValueEl.textContent = formatTriggerModeValue(diagnostics.effectiveTriggerMode);
   triggerStatusValueEl.textContent = diagnostics.effectiveTriggerLabel || settings?.triggerLabel || "Unknown";
   accessibilityValueEl.textContent = formatAccessibilityState(diagnostics.accessibilityTrusted);
+  microphoneValueEl.textContent = formatMicrophoneState(microphoneAccess);
   fnListenerValueEl.textContent = diagnostics.fnListenerRunning ? "Running" : "Stopped";
 
   appPathValueEl.textContent = diagnostics.packagedBundlePath || "Development build";
@@ -180,10 +202,18 @@ function updateTriggerDiagnosticsPanel() {
     ? `If you just changed Accessibility permission, use refresh once so VoiceKit can re-check ${holdKeyName} immediately.`
     : `Install this packaged build in Applications first, then re-enable Accessibility if ${holdKeyName} keeps falling back.`;
 
+  microphoneHintTextEl.textContent =
+    microphoneAccess?.message ||
+    "VoiceKit needs a one-time macOS microphone approval before hold-to-talk can start recording.";
   triggerDetailTextEl.textContent = uiState?.hotkeyStatus || "Waiting for trigger diagnostics.";
   triggerDetailTextEl.classList.toggle("alert", Boolean(diagnostics.usingFallbackHotkey));
 
   accessibilityActionButton.disabled = !flowApi || !navigator.platform.includes("Mac");
+  microphoneActionButton.disabled =
+    !flowApi || !navigator.platform.includes("Mac") || microphoneAccess?.status === "granted";
+  microphoneActionButton.textContent =
+    microphoneAccess?.status === "granted" ? "Microphone Granted" : "Request Microphone Access";
+  microphoneSettingsButton.disabled = !flowApi || !navigator.platform.includes("Mac");
   refreshTriggerButton.disabled = !flowApi || !navigator.platform.includes("Mac");
   moveToApplicationsButton.disabled = !flowApi || !canMove;
   moveToApplicationsButton.textContent = stableInstall ? "Already in Applications" : "Move to Applications";
@@ -300,9 +330,11 @@ function setPreviewMode() {
   triggerModeValueEl.textContent = "Preview";
   triggerStatusValueEl.textContent = "Unavailable";
   accessibilityValueEl.textContent = "Unavailable";
+  microphoneValueEl.textContent = "Unavailable";
   fnListenerValueEl.textContent = "Unavailable";
   appPathValueEl.textContent = "Unavailable";
   appPathHintEl.textContent = "Install and launch the packaged app to test hold-key permissions.";
+  microphoneHintTextEl.textContent = "Microphone permission can only be requested inside the Electron app.";
   restartHintEl.textContent = "Diagnostics actions are only available inside the Electron app.";
   triggerDetailTextEl.textContent = "Electron IPC is unavailable in preview mode.";
   toggleDictationButton.disabled = true;
@@ -310,6 +342,8 @@ function setPreviewMode() {
   settingsToggleButton.disabled = true;
   settingsCloseButton.disabled = true;
   accessibilityActionButton.disabled = true;
+  microphoneActionButton.disabled = true;
+  microphoneSettingsButton.disabled = true;
   moveToApplicationsButton.disabled = true;
   refreshTriggerButton.disabled = true;
   resetConfigButton.disabled = true;
@@ -354,6 +388,30 @@ async function openAccessibilitySettings() {
   await refreshTriggerDiagnostics({
     restartListener: false
   });
+}
+
+async function requestMicrophoneAccess() {
+  const access = await flowApi.ensureMicrophoneAccess();
+
+  if (settings) {
+    settings = {
+      ...settings,
+      microphoneAccess: access
+    };
+  }
+
+  if (uiState) {
+    uiState = {
+      ...uiState,
+      micStatus: access.message
+    };
+  }
+
+  updateTriggerDiagnosticsPanel();
+}
+
+async function openMicrophoneSettings() {
+  await flowApi.openMicrophoneSettings();
 }
 
 async function moveToApplications() {
@@ -407,6 +465,18 @@ async function init() {
   accessibilityActionButton.addEventListener("click", () => {
     void openAccessibilitySettings().catch((error) => {
       settingsErrorTextEl.textContent = error instanceof Error ? error.message : "Opening Accessibility settings failed.";
+    });
+  });
+
+  microphoneActionButton.addEventListener("click", () => {
+    void requestMicrophoneAccess().catch((error) => {
+      settingsErrorTextEl.textContent = error instanceof Error ? error.message : "Requesting microphone access failed.";
+    });
+  });
+
+  microphoneSettingsButton.addEventListener("click", () => {
+    void openMicrophoneSettings().catch((error) => {
+      settingsErrorTextEl.textContent = error instanceof Error ? error.message : "Opening Microphone settings failed.";
     });
   });
 

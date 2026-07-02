@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("flow", {
   installUpdate: () => ipcRenderer.invoke("flow:install-update"),
   moveToApplications: () => ipcRenderer.invoke("flow:move-to-applications"),
   openAccessibilitySettings: () => ipcRenderer.invoke("flow:open-accessibility-settings"),
+  openMicrophoneSettings: () => ipcRenderer.invoke("flow:open-microphone-settings"),
   refreshTriggerDiagnostics: (payload) => ipcRenderer.invoke("flow:refresh-trigger-diagnostics", payload),
   resetApiConfig: () => ipcRenderer.invoke("flow:reset-api-config"),
   saveApiConfig: (payload) => ipcRenderer.invoke("flow:save-api-config", payload),
