@@ -131,6 +131,43 @@ test("desktop config store refuses to save tokens without secure storage", async
   });
 });
 
+test("desktop config store clears unreadable saved tokens and asks for re-entry", async () => {
+  await withTempDir(async (tempDir) => {
+    const brokenSafeStorage = {
+      decryptString() {
+        throw new Error("Error while decrypting the ciphertext provided to safeStorage.decryptString.");
+      },
+      encryptString(value) {
+        return Buffer.from(value, "utf8");
+      },
+      isEncryptionAvailable() {
+        return true;
+      }
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, "desktop-config.json"),
+      `${JSON.stringify({ apiBaseUrl: "https://voice.example.com" }, null, 2)}\n`,
+      "utf8"
+    );
+    await fs.writeFile(path.join(tempDir, "desktop-token.bin"), Buffer.from("corrupted-token"));
+
+    const store = createDesktopConfigStore({
+      app: createFakeApp(tempDir),
+      env: {},
+      safeStorage: brokenSafeStorage
+    });
+
+    const loaded = await store.load();
+
+    assert.equal(loaded.apiBaseUrl, "https://voice.example.com");
+    assert.equal(loaded.hasApiToken, false);
+    assert.equal(loaded.apiConfigured, false);
+    assert.match(loaded.settingsError, /saved api token could not be read/i);
+    await assert.rejects(fs.access(path.join(tempDir, "desktop-token.bin")));
+  });
+});
+
 test("packaged desktop config store migrates existing Electron settings on first launch", async () => {
   await withTempDir(async (tempDir) => {
     const parentDir = path.join(tempDir, "Application Support");

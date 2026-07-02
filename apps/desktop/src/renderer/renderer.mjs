@@ -39,6 +39,11 @@ let uiState = null;
 let settingsDrawerOpen = false;
 let diagnosticsPollTimer = null;
 
+function isEditingConnectionForm() {
+  const activeElement = document.activeElement;
+  return activeElement === apiBaseUrlInput || activeElement === apiTokenInput;
+}
+
 function formatMode(mode) {
   if (!mode) {
     return "Idle";
@@ -89,7 +94,7 @@ function startDiagnosticsPolling() {
   }
 
   diagnosticsPollTimer = setInterval(() => {
-    if (!settingsDrawerOpen) {
+    if (!settingsDrawerOpen || isEditingConnectionForm()) {
       return;
     }
 
@@ -340,7 +345,7 @@ async function checkForUpdates() {
 async function refreshTriggerDiagnostics(options = {}) {
   const snapshot = await flowApi.refreshTriggerDiagnostics(options);
   applySettings(snapshot, {
-    preserveDraft: document.activeElement === apiBaseUrlInput || document.activeElement === apiTokenInput
+    preserveDraft: isEditingConnectionForm()
   });
 }
 
@@ -420,7 +425,7 @@ async function init() {
 
   flowApi.onSettings((nextSettings) => {
     applySettings(nextSettings, {
-      preserveDraft: document.activeElement === apiBaseUrlInput || document.activeElement === apiTokenInput
+      preserveDraft: isEditingConnectionForm()
     });
   });
 
@@ -433,8 +438,6 @@ async function init() {
       closeSettingsDrawer();
     }
   });
-
-  startDiagnosticsPolling();
 
   applySettings(await flowApi.getSettings());
   applyState(await flowApi.getUiState());

@@ -24,6 +24,10 @@ function buildSecureStorageMessage() {
   return "VoiceKit needs macOS secure storage before it can save an API token on this Mac.";
 }
 
+function buildTokenRecoveryMessage() {
+  return "The saved API token could not be read on this Mac. Paste it again to reconnect VoiceKit.";
+}
+
 async function fileExists(filePath) {
   try {
     await fs.access(filePath);
@@ -156,7 +160,13 @@ export function createDesktopConfigStore({ app, safeStorage, env = process.env }
         throw new Error(buildSecureStorageMessage());
       }
 
-      state.apiToken = safeStorage.decryptString(encryptedToken).trim();
+      try {
+        state.apiToken = safeStorage.decryptString(encryptedToken).trim();
+      } catch {
+        state.apiToken = envDefaults.apiToken;
+        state.lastError = buildTokenRecoveryMessage();
+        await fs.rm(tokenPath, { force: true }).catch(() => {});
+      }
     } catch (error) {
       if (error.code !== "ENOENT") {
         state.lastError = error instanceof Error ? error.message : "Could not decrypt the saved API token.";
